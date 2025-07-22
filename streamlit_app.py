@@ -792,8 +792,8 @@ def main():
         
         st.markdown("""
         ### 🎯 システム特徴
-        - ✅ 実在特許240+件対応
-        - ✅ 企業別均等収集
+        - ✅ 実在特許265+件対応
+        - ✅ 企業別均等収集（13社）
         - ✅ Google Drive分割保存
         - ✅ スケーラブル設計
         - ✅ リアルタイム分析
@@ -893,14 +893,14 @@ def main():
                 "Applied Materials", "Tokyo Electron", "Kyocera", 
                 "Shinko Electric", "TOTO", "Sumitomo Osaka Cement",
                 "NGK Insulators", "NTK Ceratec", "Lam Research",
-                "Entegris", "MiCo", "SEMCO Engineering"
+                "Entegris", "MiCo", "SEMCO Engineering", "Creative Technology"
             ]
             
             mode_companies = {
                 "標準収集 (50件)": 5,
                 "拡張収集 (100件)": 8,
-                "大量収集 (200件)": 12,
-                "全件 (60+実在特許)": 12
+                "大量収集 (200件)": 13,
+                "全件 (60+実在特許)": 13
             }
             
             num_companies = mode_companies[collection_mode]
