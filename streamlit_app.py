@@ -170,28 +170,32 @@ def load_patent_data(use_demo_data=True, bq_connector=None):
         try:
             with st.spinner("BigQueryから特許データを取得中..."):
                 df, message = bq_connector.search_esc_patents(
-                    start_date='2010-01-01', 
-                    limit=1000
+                    start_date='2015-01-01', 
+                    limit=500
                 )
                 
-                if df is not None:
+                if df is not None and len(df) > 0:
                     st.success(f"✅ {message}")
                     
                     # データ形式を統一
-                    df = df.rename(columns={
-                        'title': 'title',
-                        'abstract': 'abstract', 
-                        'assignee': 'assignee',
-                        'filing_date': 'filing_date',
-                        'country_code': 'country'
-                    })
+                    if 'title' not in df.columns:
+                        df['title'] = 'Title not available'
+                    if 'abstract' not in df.columns:
+                        df['abstract'] = 'Abstract not available'
+                        
+                    # filing_dateをdatetime型に変換
+                    df['filing_date'] = pd.to_datetime(df['filing_date'], errors='coerce')
+                    
+                    # countryカラム名を統一
+                    if 'country_code' in df.columns:
+                        df = df.rename(columns={'country_code': 'country'})
                     
                     # 技術カテゴリを追加（シンプルな分類）
                     df['technology_category'] = df['title'].apply(classify_technology)
                     
                     return df
                 else:
-                    st.error(f"❌ データ取得エラー: {message}")
+                    st.warning(f"⚠️ データが見つかりませんでした: {message}")
                     st.info("デモデータを使用します。")
                     return generate_demo_data()
                     
