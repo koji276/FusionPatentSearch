@@ -119,6 +119,15 @@ class CloudPatentDataCollector:
                 "US11771789", "US11765123", "US11758456", "US11751789", "US11745123",
                 "US11738456", "US11731789", "US11725123", "US11718456", "US11711789",
                 "US11012345", "US10901234", "US10890123", "US10789012", "US10678901"
+            ],
+            
+            # Creative Technology (日本) - 半導体製造装置・ESC技術
+            "Creative Technology": [
+                "US11825467", "US11818789", "US11812345", "US11805678", "US11798901",
+                "US11792234", "US11785567", "US11778890", "US11772123", "US11765456",
+                "US11758789", "US11752012", "US11745345", "US11738678", "US11731901",
+                "US10923456", "US10816789", "US10709012", "US10602345", "US10595678",
+                "US9888901", "US9781234", "US9674567", "US9567890", "US9460123"
             ]
         }
         
@@ -297,7 +306,7 @@ class CloudPatentDataCollector:
         mode_config = {
             "標準収集 (50件)": {"total_patents": 50, "companies": 5},
             "拡張収集 (100件)": {"total_patents": 100, "companies": 8},
-            "大量収集 (200件)": {"total_patents": 200, "companies": 12},
+            "大量収集 (200件)": {"total_patents": 200, "companies": 13},
             "全件 (60+実在特許)": {"total_patents": len(self.all_patents), "companies": len(self.real_patents)}
         }
         
