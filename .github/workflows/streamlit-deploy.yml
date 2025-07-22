@@ -1,0 +1,44 @@
+ # .github/workflows/streamlit-deploy.yml
+# GitHub Actions で Streamlit Cloud に自動デプロイ
+
+name: Deploy FusionPatentSearch
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install streamlit
+    
+    - name: Test FusionPatentSearch app
+      run: |
+        python -c "import streamlit_app; print('✓ FusionPatentSearch imports successfully')"
+    
+    - name: Create demo data
+      run: |
+        python -c "
+        import pandas as pd
+        import numpy as np
+        np.random.seed(42)
+        # デモデータ生成とテスト
+        from streamlit_app import StreamlitESCAnalyzer
+        analyzer = StreamlitESCAnalyzer()
+        df = analyzer.load_demo_data()
+        print(f'✓ Demo data created: {len(df)} patents')
+        "
