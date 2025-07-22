@@ -13,7 +13,7 @@ import re
 from typing import List, Dict, Optional
 
 class CloudPatentDataCollector:
-    """実在特許データ収集・クラウド保存システム"""
+    """実在特許データ収集・クラウド保存システム（完成版）"""
     
     def __init__(self):
         self.drive_service = None
@@ -182,62 +182,122 @@ class CloudPatentDataCollector:
             url = f"https://patents.google.com/patent/{patent_number}"
             
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
             
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
             
             # タイトル取得
-            title_elem = soup.find('meta', property='og:title')
-            title = title_elem['content'] if title_elem else "Title not found"
+            title_elem = soup.find('span', {'data-proto': 'TITLE'})
+            if not title_elem:
+                title_elem = soup.find('meta', property='og:title')
+                title = title_elem['content'] if title_elem else "Title not found"
+            else:
+                title = title_elem.get_text(strip=True)
             
-            # Abstract取得
-            abstract_elem = soup.find('div', class_='abstract')
-            abstract = abstract_elem.get_text(strip=True) if abstract_elem else "Abstract not found"
+            # Abstract取得（複数の方法を試行）
+            abstract = "Abstract not found"
+            abstract_selectors = [
+                'div[data-proto="ABSTRACT"]',
+                'section[data-proto="ABSTRACT"]',
+                'div.abstract',
+                'section.abstract'
+            ]
+            
+            for selector in abstract_selectors:
+                abstract_elem = soup.select_one(selector)
+                if abstract_elem:
+                    abstract = abstract_elem.get_text(strip=True)
+                    break
             
             # 発明者取得
             inventors = []
-            inventor_elems = soup.find_all('dd', itemprop='inventor')
-            for elem in inventor_elems:
-                inventors.append(elem.get_text(strip=True))
+            inventor_selectors = [
+                'dd[data-proto="INVENTOR"]',
+                'span[data-proto="INVENTOR"]',
+                'dd[itemprop="inventor"]'
+            ]
+            
+            for selector in inventor_selectors:
+                inventor_elems = soup.select(selector)
+                if inventor_elems:
+                    inventors = [elem.get_text(strip=True) for elem in inventor_elems]
+                    break
             
             # 出願人取得
-            assignee_elem = soup.find('dd', itemprop='assigneeCurrentAssignee')
-            assignee = assignee_elem.get_text(strip=True) if assignee_elem else "Assignee not found"
+            assignee = "Assignee not found"
+            assignee_selectors = [
+                'dd[data-proto="ASSIGNEE"]',
+                'span[data-proto="ASSIGNEE"]',
+                'dd[itemprop="assigneeCurrentAssignee"]'
+            ]
+            
+            for selector in assignee_selectors:
+                assignee_elem = soup.select_one(selector)
+                if assignee_elem:
+                    assignee = assignee_elem.get_text(strip=True)
+                    break
             
             # 出願日取得
-            filing_date_elem = soup.find('time', itemprop='filingDate')
-            filing_date = filing_date_elem['datetime'] if filing_date_elem else "Filing date not found"
+            filing_date = "Filing date not found"
+            date_selectors = [
+                'time[data-proto="FILING_DATE"]',
+                'time[itemprop="filingDate"]',
+                'span[data-proto="FILING_DATE"]'
+            ]
+            
+            for selector in date_selectors:
+                date_elem = soup.select_one(selector)
+                if date_elem:
+                    filing_date = date_elem.get('datetime') or date_elem.get_text(strip=True)
+                    break
+            
+            # 公開日取得
+            publication_date = "Publication date not found"
+            pub_selectors = [
+                'time[data-proto="PUBLICATION_DATE"]',
+                'time[itemprop="publicationDate"]'
+            ]
+            
+            for selector in pub_selectors:
+                pub_elem = soup.select_one(selector)
+                if pub_elem:
+                    publication_date = pub_elem.get('datetime') or pub_elem.get_text(strip=True)
+                    break
             
             patent_data = {
                 'patent_number': patent_number,
-                'title': title,
-                'abstract': abstract,
-                'inventors': inventors,
-                'assignee': assignee,
+                'title': title[:500],  # タイトル長制限
+                'abstract': abstract[:2000],  # Abstract長制限
+                'inventors': inventors[:10],  # 発明者数制限
+                'assignee': assignee[:200],  # 出願人名制限
                 'filing_date': filing_date,
-                'publication_date': '',
+                'publication_date': publication_date,
                 'classification': [],
-                'scraped_at': datetime.now().isoformat()
+                'scraped_at': datetime.now().isoformat(),
+                'source_url': url
             }
             
             return patent_data
             
+        except requests.RequestException as e:
+            st.warning(f"特許 {patent_number} のネットワークエラー: {str(e)}")
+            return None
         except Exception as e:
             st.warning(f"特許 {patent_number} の取得に失敗: {str(e)}")
             return None
     
-    def collect_real_patents(self, collection_mode: str = "medium") -> int:
+    def collect_real_patents(self, collection_mode: str = "標準収集 (100件)") -> int:
         """実在特許データを収集（企業別対応）"""
         
         # 収集モードに応じて戦略を決定
         mode_config = {
-            "クイック (50件)": {"total_patents": 50, "companies": 5},
-            "標準 (100件)": {"total_patents": 100, "companies": 8},
-            "大量 (200件)": {"total_patents": 200, "companies": 12},
+            "標準収集 (50件)": {"total_patents": 50, "companies": 5},
+            "拡張収集 (100件)": {"total_patents": 100, "companies": 8},
+            "大量収集 (200件)": {"total_patents": 200, "companies": 12},
             "全件 (60+実在特許)": {"total_patents": len(self.all_patents), "companies": len(self.real_patents)}
         }
         
@@ -277,6 +337,8 @@ class CloudPatentDataCollector:
             with cols[i % len(cols)]:
                 st.metric(company.split()[0] if len(company.split()) > 1 else company, f"{count}件")
         
+        # データ収集実行
+        success_count = 0
         for i, patent_num in enumerate(patents_to_collect):
             # 現在収集中の企業を特定
             current_company = "不明"
@@ -290,12 +352,13 @@ class CloudPatentDataCollector:
             patent_data = self.scrape_patent_details(patent_num)
             if patent_data:
                 collected_data.append(patent_data)
+                success_count += 1
             
             # 進捗更新
             progress_bar.progress((i + 1) / len(patents_to_collect))
             
             # レート制限対応（企業間でのスクレイピング間隔調整）
-            time.sleep(1.5)  # より安全な間隔
+            time.sleep(2.0)  # より安全な間隔
         
         status_text.text("データ保存中...")
         
@@ -313,7 +376,11 @@ class CloudPatentDataCollector:
             st.metric("予定収集数", len(patents_to_collect))
         
         # Google Driveに保存
-        saved_count = self.save_to_google_drive(collected_data, company_stats)
+        if collected_data:
+            saved_count = self.save_to_google_drive(collected_data, company_stats)
+        else:
+            saved_count = 0
+            st.error("保存するデータがありません")
         
         progress_bar.empty()
         status_text.empty()
@@ -337,6 +404,11 @@ class CloudPatentDataCollector:
                 'data_structure': {
                     'fields': ['patent_number', 'title', 'abstract', 'inventors', 'assignee', 'filing_date'],
                     'description': 'FusionPatentSearch ESC特許データセット'
+                },
+                'system_info': {
+                    'version': '2.0',
+                    'architecture': 'Cloud-based phased data processing',
+                    'project': 'Tokyo Institute of Science and Technology - FUSIONDRIVER INC'
                 }
             }
             
@@ -347,7 +419,8 @@ class CloudPatentDataCollector:
             
             metadata_file = {
                 'name': metadata_filename,
-                'parents': [self.folder_id]
+                'parents': [self.folder_id],
+                'description': 'FusionPatentSearch 収集メタデータ'
             }
             
             metadata_media = MediaIoBaseUpload(metadata_stream, mimetype='application/json')
@@ -370,7 +443,12 @@ class CloudPatentDataCollector:
                         'chunk_number': i + 1,
                         'total_chunks': len(chunks),
                         'chunk_size': len(chunk),
-                        'timestamp': timestamp
+                        'timestamp': timestamp,
+                        'collection_info': {
+                            'source': 'Google Patents',
+                            'method': 'Web Scraping',
+                            'rate_limit': '2.0 seconds per request'
+                        }
                     },
                     'data': chunk
                 }
@@ -383,7 +461,7 @@ class CloudPatentDataCollector:
                 file_metadata = {
                     'name': filename,
                     'parents': [self.folder_id],
-                    'description': f'FusionPatentSearch データチャンク {i+1}/{len(chunks)}'
+                    'description': f'FusionPatentSearch データチャンク {i+1}/{len(chunks)} - ESC特許分析用'
                 }
                 
                 # アップロード
@@ -399,7 +477,7 @@ class CloudPatentDataCollector:
             if company_stats:
                 st.subheader("📊 保存済み企業別統計")
                 stats_df = pd.DataFrame(list(company_stats.items()), columns=['企業名', '特許数'])
-                st.dataframe(stats_df)
+                st.dataframe(stats_df, use_container_width=True)
             
             return len(data)
             
@@ -416,7 +494,8 @@ class CloudPatentDataCollector:
             query = f"'{self.folder_id}' in parents and name contains 'patent_data_chunk'"
             results = self.drive_service.files().list(
                 q=query,
-                fields="files(id, name, createdTime, size)"
+                fields="files(id, name, createdTime, size)",
+                orderBy="createdTime desc"
             ).execute()
             
             return results.get('files', [])
@@ -429,8 +508,13 @@ class CloudPatentDataCollector:
         """Google Driveからデータをダウンロード"""
         try:
             file_content = self.drive_service.files().get_media(fileId=file_id).execute()
-            data = json.loads(file_content.decode('utf-8'))
-            return data
+            chunk_data = json.loads(file_content.decode('utf-8'))
+            
+            # チャンク形式のデータから実際のデータ部分を抽出
+            if 'data' in chunk_data:
+                return chunk_data['data']
+            else:
+                return chunk_data  # 古い形式の場合
             
         except Exception as e:
             st.error(f"ファイルダウンロードエラー: {str(e)}")
@@ -447,16 +531,38 @@ class CloudPatentDataCollector:
             
             all_data = []
             
-            for file_info in file_list:
+            # プログレスバー表示
+            load_progress = st.progress(0)
+            load_status = st.empty()
+            
+            for i, file_info in enumerate(file_list):
+                load_status.text(f"読み込み中: {file_info['name']}")
                 chunk_data = self.download_from_drive(file_info['id'])
                 all_data.extend(chunk_data)
+                load_progress.progress((i + 1) / len(file_list))
+            
+            load_progress.empty()
+            load_status.empty()
+            
+            if not all_data:
+                st.warning("読み込み可能なデータがありません")
+                return pd.DataFrame()
             
             df = pd.DataFrame(all_data)
             
-            if not df.empty:
-                # データクリーニング
+            # データクリーニング
+            if 'filing_date' in df.columns:
                 df['filing_date'] = pd.to_datetime(df['filing_date'], errors='coerce')
-                df = df.drop_duplicates(subset=['patent_number'])
+                df['filing_year'] = df['filing_date'].dt.year
+            
+            if 'publication_date' in df.columns:
+                df['publication_date'] = pd.to_datetime(df['publication_date'], errors='coerce')
+            
+            # 重複除去
+            df = df.drop_duplicates(subset=['patent_number'])
+            
+            # データ品質レポート
+            st.info(f"📊 データ読み込み完了: {len(df)}件の特許データ")
             
             return df
             
