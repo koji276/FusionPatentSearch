@@ -50,63 +50,110 @@ class DualPatentConnector:
             st.warning(f"⚠️ BigQuery接続失敗: {str(e)}")
             self.bigquery_connected = False
     
-    def search_patents_bigquery(self, start_date='2015-01-01', limit=500):
-        """BigQueryから特許データを取得（修正版）"""
-        if not self.bigquery_connected:
-            return pd.DataFrame()
+def search_patents_bigquery(self, start_date='2015-01-01', limit=500):
+    """BigQueryから特許データを取得（超シンプル版）"""
+    if not self.bigquery_connected:
+        return pd.DataFrame()
+    
+    try:
+        # 最もシンプルなクエリ
+        query = """
+        SELECT 
+            publication_number,
+            assignee_harmonized as assignee,
+            filing_date,
+            country_code,
+            title_localized as title,
+            EXTRACT(YEAR FROM filing_date) as filing_year
+        FROM `patents-public-data.patents.publications` 
+        WHERE 
+            assignee_harmonized = 'Applied Materials, Inc.'
+            AND filing_date >= '2020-01-01'
+            AND country_code = 'US'
+        ORDER BY filing_date DESC
+        LIMIT 100
+        """
         
-        try:
-            # 修正されたクエリ - データ型エラーを回避
-            query = f"""
-            SELECT 
-                publication_number,
-                assignee_harmonized as assignee,
-                filing_date,
-                country_code,
-                title_localized as title,
-                EXTRACT(YEAR FROM filing_date) as filing_year
-            FROM `patents-public-data.patents.publications` 
-            WHERE 
-                filing_date >= DATE('{start_date}')
-                AND filing_date <= DATE('2024-07-22')
-                AND assignee_harmonized IS NOT NULL
-                AND country_code IN ('US', 'JP', 'EP', 'WO')
-                AND (
-                    UPPER(assignee_harmonized) LIKE '%APPLIED MATERIALS%'
-                    OR UPPER(assignee_harmonized) LIKE '%TOKYO ELECTRON%'
-                    OR UPPER(assignee_harmonized) LIKE '%KYOCERA%'
-                    OR UPPER(assignee_harmonized) LIKE '%NGK INSULATORS%'
-                    OR UPPER(assignee_harmonized) LIKE '%TOTO%'
-                    OR UPPER(assignee_harmonized) LIKE '%LAM RESEARCH%'
-                    OR UPPER(title_localized) LIKE '%ELECTROSTATIC CHUCK%'
-                    OR UPPER(title_localized) LIKE '%ESC%'
-                )
-            ORDER BY filing_date DESC
-            LIMIT {limit}
-            """
+        st.info("🔍 BigQuery (シンプルクエリ) で検索中...")
+        
+        job_config = bigquery.QueryJobConfig()
+        job_config.maximum_bytes_billed = 100000000  # 100MB制限
+        
+        query_job = self.bigquery_client.query(query, job_config=job_config)
+        results = query_job.result(timeout=15)
+        
+        df = results.to_dataframe()
+        
+        if len(df) > 0:
+            df['abstract'] = 'Patent data from Google Patents BigQuery dataset.'
+            df['data_source'] = 'BigQuery (Google Patents)'
+            st.success(f"✅ BigQuery: {len(df)}件取得")
+            return df
+        else:
+            st.info("ℹ️ BigQuery: Applied Materials社のデータなし")
+            return pd.DataFrame()
             
-            st.info("🔍 BigQuery (Google Patents) で検索中...")
+    except Exception as e:
+        st.warning(f"⚠️ BigQuery接続中: {str(e)}")
+        return pd.DataFrame()
+
+def search_patents_api(self, start_date='2015-01-01', limit=500):
+    """PatentsView APIから特許データを取得（修正版）"""
+    try:
+        st.info("🔍 PatentsView API で検索中...")
+        
+        # シンプルなクエリ
+        query = {
+            "q": {
+                "assignee_organization": "Applied Materials"
+            },
+            "f": [
+                "patent_number", "patent_title", "patent_date",
+                "assignee_organization"
+            ],
+            "s": [{"patent_date": "desc"}],
+            "o": {"per_page": 50}
+        }
+        
+        response = requests.post(self.patents_api_url, json=query, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            patents = data.get('patents', [])
             
-            job_config = bigquery.QueryJobConfig()
-            job_config.maximum_bytes_billed = 1000000000  # 1GB制限
-            
-            query_job = self.bigquery_client.query(query, job_config=job_config)
-            results = query_job.result(timeout=30)
-            
-            df = results.to_dataframe()
-            
-            if len(df) > 0:
-                df['abstract'] = 'Patent data from Google Patents BigQuery dataset.'
-                df['data_source'] = 'BigQuery (Google Patents)'
-                st.success(f"✅ BigQuery: {len(df)}件取得")
+            if patents:
+                all_patents = []
+                for patent in patents:
+                    assignees = patent.get('assignees', [])
+                    assignee_name = assignees[0].get('assignee_organization', 'Applied Materials') if assignees else 'Applied Materials'
+                    
+                    all_patents.append({
+                        'publication_number': patent.get('patent_number', ''),
+                        'assignee': assignee_name,
+                        'filing_date': patent.get('patent_date', ''),
+                        'country_code': 'US',
+                        'title': patent.get('patent_title', ''),
+                        'abstract': 'Patent data from USPTO PatentsView API.',
+                        'data_source': 'PatentsView API (USPTO)'
+                    })
+                
+                df = pd.DataFrame(all_patents)
+                df['filing_date'] = pd.to_datetime(df['filing_date'], errors='coerce')
+                df = df.dropna(subset=['filing_date'])
+                df['filing_year'] = df['filing_date'].dt.year
+                
+                st.success(f"✅ PatentsView API: {len(df)}件取得")
                 return df
             else:
-                st.warning("⚠️ BigQuery: 該当データなし")
+                st.info("ℹ️ PatentsView API: データなし")
                 return pd.DataFrame()
-                
-        except Exception as e:
-            st.error(f"❌ BigQuery エラー: {str(e)}")
+        else:
+            st.warning(f"⚠️ PatentsView API: エラー {response.status_code}")
             return pd.DataFrame()
+            
+    except Exception as e:
+        st.warning(f"⚠️ PatentsView API接続中: {str(e)}")
+        return pd.DataFrame()
     
     def search_patents_api(self, start_date='2015-01-01', limit=500):
         """PatentsView APIから特許データを取得"""
