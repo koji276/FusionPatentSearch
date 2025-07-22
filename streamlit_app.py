@@ -381,9 +381,17 @@ def show_company_analysis(df, analyzer):
             
             # 最新特許リスト
             with st.expander(f"{company} 最新特許 (Top 5)"):
-                recent_patents = company_patents.sort_values('filing_date', ascending=False).head(5)[['filing_date', 'title', 'country_code']]
+                if len(company_patents) > 0:
+                    recent_patents = company_patents.sort_values('filing_date', ascending=False).head(5)
+                    if not recent_patents.empty and all(col in recent_patents.columns for col in ['filing_date', 'title', 'country_code']):
+                        recent_patents = recent_patents[['filing_date', 'title', 'country_code']]
+                    else:
+                        recent_patents = pd.DataFrame(columns=['filing_date', 'title', 'country_code'])
+                else:
+                    recent_patents = pd.DataFrame(columns=['filing_date', 'title', 'country_code'])
+                
                 st.dataframe(recent_patents, use_container_width=True)
-            
+                        
             st.markdown('</div>', unsafe_allow_html=True)
 
 def show_technology_trends(df, analyzer):
