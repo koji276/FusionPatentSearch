@@ -910,8 +910,8 @@ def main():
             num_companies = mode_companies[collection_mode]
             selected_companies = companies_preview[:num_companies]
             
-            # 企業表示（5行 x 4列 = 20スロット）
-            st.markdown("**対象企業一覧:**")
+            # 企業表示（5行 x 4列 = 20スロット）- 完全静的表示
+            st.markdown("**収集対象企業一覧（17社）:**")
             
             # 1行目 - 主要日本企業
             col1, col2, col3, col4 = st.columns(4)
@@ -957,23 +957,31 @@ def main():
             with col4:
                 st.markdown("✅ **Calitech** 🇹🇼")
             
-            # 5行目 - アジア企業
+            # 5行目 - 中国企業
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 st.markdown("✅ **Beijing U-Precision** 🇨🇳")
             with col2:
-                st.markdown("")  # 空白
+                st.markdown("🌍 **グローバル17社**")
             with col3:
-                st.markdown("")  # 空白  
+                st.markdown("🏭 **425+特許**")  
             with col4:
-                st.markdown("")  # 空白
+                st.markdown("📊 **6地域対応**")
+                
+            # 統計情報
+            st.markdown("""
+            <div style="background: #f0f8ff; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                <h5>🌏 地域別企業分布</h5>
+                <p>🇯🇵 <strong>日本</strong>: 9社 | 🇺🇸 <strong>米国</strong>: 4社 | 🇰🇷 <strong>韓国</strong>: 1社 | 🇫🇷 <strong>フランス</strong>: 1社 | 🇹🇼 <strong>台湾</strong>: 1社 | 🇨🇳 <strong>中国</strong>: 1社</p>
+            </div>
+            """, unsafe_allow_html=True)
                 
             # M&A情報の補足説明
             st.markdown("""
-            <div style="background: #e7f3ff; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
-                <h5>🏢 M&A情報</h5>
-                <p><strong>FM Industries (米国)</strong> → 2002年に日本ガイシが買収</p>
-                <p>日本ガイシの海外展開戦略の一環として、米国ESC技術を獲得</p>
+            <div style="background: #e7f3ff; padding: 1rem; border-radius: 8px; margin-top: 0.5rem;">
+                <h5>🏢 M&A履歴</h5>
+                <p><strong>FM Industries (米国)</strong> → 2002年に日本ガイシ（NGK Insulators）が買収</p>
+                <p>グローバルESC技術統合戦略の一環として実現</p>
             </div>
             """, unsafe_allow_html=True)
         
@@ -981,10 +989,10 @@ def main():
             st.subheader("📈 収集進捗予測")
             
             mode_config = {
-                "標準収集 (50件)": {"size": "~5MB", "time": "5-8分", "success": "70-80%"},
-                "拡張収集 (100件)": {"size": "~10MB", "time": "8-12分", "success": "65-75%"},
-                "大量収集 (200件)": {"size": "~20MB", "time": "15-25分", "success": "60-70%"},
-                "全件 (60+実在特許)": {"size": "~30MB", "time": "25-35分", "success": "55-65%"}
+                "標準収集 (50件)": {"size": "~8MB", "time": "8-12分", "success": "70-80%"},
+                "拡張収集 (100件)": {"size": "~15MB", "time": "15-20分", "success": "65-75%"},
+                "大量収集 (200件)": {"size": "~30MB", "time": "25-35分", "success": "60-70%"},
+                "全件 (60+実在特許)": {"size": "~50MB", "time": "40-60分", "success": "55-65%"}
             }
             
             config = mode_config[collection_mode]
