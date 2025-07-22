@@ -127,6 +127,37 @@ def safe_nlargest(df, n, column):
         st.error(f"データ処理でエラーが発生しました: {str(e)}")
         return pd.DataFrame()
 
+def generate_demo_data():
+    """デモデータ生成"""
+    np.random.seed(42)
+    
+    all_companies = TARGET_COMPANIES["日本企業"] + TARGET_COMPANIES["海外企業"]
+    years = list(range(2010, 2025))
+    
+    data = []
+    patent_id = 1
+    
+    for year in years:
+        for company in all_companies:
+            # 年度ごとの特許数をランダムに生成
+            num_patents = np.random.poisson(3) + 1
+            
+            for _ in range(num_patents):
+                filing_date = datetime(year, np.random.randint(1, 13), np.random.randint(1, 29))
+                
+                data.append({
+                    'patent_id': f'JP{patent_id:06d}',
+                    'title': f'曲面ESC技術に関する特許 #{patent_id}',
+                    'assignee': company,
+                    'filing_date': filing_date,
+                    'country': 'JP' if company in TARGET_COMPANIES["日本企業"] else 'US',
+                    'technology_category': np.random.choice(['基礎技術', '応用技術', '製造技術', '制御技術']),
+                    'abstract': f'この発明は{company}による曲面ESC技術の改良に関する。'
+                })
+                patent_id += 1
+    
+    return pd.DataFrame(data)
+
 def load_patent_data(use_demo_data=True, bq_connector=None):
     """特許データを読み込む（デモデータまたはBigQuery）"""
     
