@@ -80,34 +80,7 @@ class DualPatentConnector:
             return False
 
     # === 既存メソッドの改善版 ===
-    def search_patents_api_improved(self, limit=100):
-        """改善版API検索（既存メソッドを置き換えない）"""
-        
-        # 接続テストを最初に実行
-        if not self.test_api_connection():
-            st.warning("⚠️ API接続に問題があります。デモデータを使用します。")
-            return None
-        
-        # 既存のクエリを改善
-        improved_query = {
-            "q": {
-                "_or": [
-                    {"assignee_organization": "Applied Materials"},
-                    {"assignee_organization": "Tokyo Electron"},
-                    {"assignee_organization": "KYOCERA"},
-                    {"assignee_organization": "Applied Materials Inc"},
-                    {"assignee_organization": "Tokyo Electron Limited"},
-                    # より多くのバリエーションを追加
-                    {"patent_title": "electrostatic chuck"},
-                    {"patent_title": "ESC"}
-                ]
-            },
-            "f": ["patent_number", "patent_title", "patent_date", "assignee_organization"],
-            "s": [{"patent_date": "desc"}],
-            "o": {"per_page": min(limit, 100)}  # 制限を追加
-        }
-        
-        return self._execute_query_with_retry(improved_query)
+
 
     # === 新規追加: リトライ機能付きクエリ実行 ===
     def _execute_query_with_retry(self, query: Dict, max_retries: int = 3) -> Optional[pd.DataFrame]:
