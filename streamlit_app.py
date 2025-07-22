@@ -551,7 +551,8 @@ def main():
         st.markdown("""
         - **バージョン**: v1.0.0
         - **最終更新**: 2024年7月
-        - **開発**: 東京科学大学
+        - **開発**: FUSIONDRIVER INC
+        - **プロジェクト**: KSPプロジェクト
         - **GitHub**: [FusionPatentSearch](https://github.com/koji276/FusionPatentSearch)
         """)
     
@@ -598,10 +599,11 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #666; padding: 2rem;'>
-        <p>🔬 <strong>FusionPatentSearch</strong> - Developed by Tokyo Institute of Science and Technology</p>
+        <p>🔬 <strong>FusionPatentSearch</strong> - Developed by FUSIONDRIVER INC</p>
+        <p>🤝 <strong>KSPプロジェクト</strong> - 東京科学大学 齊藤滋規教授 学術連携</p>
         <p>📧 Contact: <a href="mailto:saito@titech.ac.jp">saito@titech.ac.jp</a> | 
            📚 <a href="https://github.com/koji276/FusionPatentSearch">GitHub Repository</a></p>
-        <p><small>© 2024 Tokyo Institute of Science and Technology. All rights reserved.</small></p>
+        <p><small>© 2024 FUSIONDRIVER INC. All rights reserved.</small></p>
     </div>
     """, unsafe_allow_html=True)
 
