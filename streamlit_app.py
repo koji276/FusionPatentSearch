@@ -1,13 +1,3 @@
- #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-ESC特許分析 Streamlit Webアプリ
-GitHub + Streamlit Cloud で動作
-
-使用方法:
-streamlit run streamlit_app.py
-"""
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -16,22 +6,26 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from google.cloud import bigquery
-from collections import Counter, defaultdict
-import re
-from datetime import datetime
 import warnings
+from datetime import datetime, timedelta
+import re
+from collections import Counter
+from wordcloud import WordCloud
+import networkx as nx
+
+# 日本語フォント設定
+plt.rcParams['font.family'] = ['DejaVu Sans', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 warnings.filterwarnings('ignore')
 
-# Streamlit設定
+# ページ設定
 st.set_page_config(
-    page_title="FusionPatentSearch - 東京科学大学版",
+    page_title="🔍 FusionPatentSearch - ESC特許分析システム",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# カスタムCSS
+# CSS スタイリング
 st.markdown("""
 <style>
     .main-header {
@@ -39,612 +33,577 @@ st.markdown("""
         color: #1f77b4;
         text-align: center;
         margin-bottom: 2rem;
+        padding: 1rem;
+        background: linear-gradient(90deg, #f0f8ff, #e6f3ff);
+        border-radius: 10px;
     }
     .metric-card {
-        background-color: #f0f2f6;
+        background: white;
         padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        text-align: center;
     }
-    .company-highlight {
-        background-color: #e1f5fe;
-        padding: 0.5rem;
-        border-radius: 0.25rem;
-        margin: 0.25rem 0;
-        border-left: 4px solid #2196f3;
+    .company-card {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+        border-left: 4px solid #1f77b4;
+    }
+    .sidebar-header {
+        color: #1f77b4;
+        font-size: 1.2rem;
+        font-weight: bold;
+        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-class StreamlitESCAnalyzer:
-    def __init__(self):
-        """初期化"""
-        self.target_companies = {
-            'Japanese': {
-                'SHINKO ELECTRIC': '新光電気工業',
-                'TOTO': 'TOTO',
-                'SUMITOMO OSAKA CEMENT': '住友大阪セメント',
-                'KYOCERA': '京セラ',
-                'NGK INSULATORS': '日本ガイシ',
-                'NTK CERATEC': 'NTKセラテック',
-                'TSUKUBA SEIKO': '筑波精工',
-                'CREATIVE TECHNOLOGY': 'クリエイティブテクノロジー',
-                'TOKYO ELECTRON': '東京エレクトロン'
-            },
-            'International': {
-                'APPLIED MATERIALS': 'Applied Materials (米国)',
-                'LAM RESEARCH': 'Lam Research (米国)',
-                'ENTEGRIS': 'Entegris (米国)',
-                'FM INDUSTRIES': 'FM Industries (米国→日本ガイシ)',
-                'MICO': 'MiCo (韓国)',
-                'SEMCO ENGINEERING': 'SEMCO Engineering (フランス)',
-                'CALITECH': 'Calitech (台湾)',
-                'BEIJING U-PRECISION': 'Beijing U-Precision (中国)'
-            }
-        }
-    
-    @st.cache_data
-    def load_demo_data(_self):
-        """デモデータの生成（BigQuery接続なしでも動作）"""
-        np.random.seed(42)
-        
-        # ダミーデータ生成
-        companies = list(_self.target_companies['Japanese'].keys()) + list(_self.target_companies['International'].keys())
-        
-        data = []
-        for i in range(500):  # 500件のダミー特許
-            company = np.random.choice(companies, p=[0.15, 0.08, 0.05, 0.12, 0.18, 0.06, 0.03, 0.04, 0.08, 0.09, 0.05, 0.02, 0.01, 0.01, 0.01, 0.01, 0.01])
-            year = np.random.choice(range(2015, 2025), p=[0.05, 0.08, 0.10, 0.12, 0.15, 0.16, 0.14, 0.12, 0.06, 0.02])
-            
-            titles = [
-                "Electrostatic chuck with improved temperature control",
-                "Curved ESC for flexible substrate processing", 
-                "Multi-zone heating system for semiconductor processing",
-                "Ceramic electrostatic chuck with enhanced durability",
-                "Plasma confinement system with curved geometry",
-                "Temperature monitoring system for wafer processing",
-                "Flexible substrate handling apparatus",
-                "Advanced ceramic material for ESC applications"
-            ]
-            
-            data.append({
-                'publication_number': f'JP{year}0{i:06d}',
-                'normalized_assignee': company,
-                'filing_date': f'{year}-{np.random.randint(1,13):02d}-{np.random.randint(1,29):02d}',
-                'title': np.random.choice(titles),
-                'country_code': np.random.choice(['JP', 'US', 'EP', 'CN'], p=[0.4, 0.3, 0.2, 0.1]),
-                'filing_year': year
-            })
-        
-        return pd.DataFrame(data)
-    
-    @st.cache_data  
-    def search_patents_bigquery(_self, use_demo=True):
-        """BigQueryから特許データを検索"""
-        if use_demo:
-            return _self.load_demo_data()
-        
-        # 実際のBigQuery接続（認証設定済みの場合）
-        try:
-            client = bigquery.Client()
-            query = """
-            SELECT DISTINCT
-                p.publication_number,
-                p.country_code,
-                p.filing_date,
-                COALESCE(title_en.text, title_ja.text) as title,
-                p.assignee_harmonized as assignee,
-                EXTRACT(YEAR FROM p.filing_date) as filing_year
-            FROM `patents-public-data.patents.publications` p
-            LEFT JOIN UNNEST(title_localized) as title_en ON title_en.language = 'en'
-            LEFT JOIN UNNEST(title_localized) as title_ja ON title_ja.language = 'ja'
-            WHERE (
-                REGEXP_CONTAINS(LOWER(COALESCE(title_en.text, '')), r'electrostatic.*chuck|esc')
-                OR REGEXP_CONTAINS(COALESCE(title_ja.text, ''), r'静電チャック|ESC')
-                OR REGEXP_CONTAINS(UPPER(COALESCE(p.assignee_harmonized, '')), 
-                    r'SHINKO ELECTRIC|TOTO|KYOCERA|NGK|TOKYO ELECTRON|APPLIED MATERIALS|LAM RESEARCH')
-            )
-            AND p.filing_date >= '2015-01-01'
-            ORDER BY p.filing_date DESC
-            LIMIT 1000
-            """
-            
-            df = client.query(query).to_dataframe()
-            # 企業名正規化
-            df['normalized_assignee'] = df['assignee'].fillna('Unknown')
-            return df
-            
-        except Exception as e:
-            st.error(f"BigQuery接続エラー: {e}")
-            return _self.load_demo_data()
+# 対象企業リスト
+TARGET_COMPANIES = {
+    "日本企業": [
+        "新光電気工業", "TOTO", "住友大阪セメント", "京セラ", 
+        "日本ガイシ", "NTKセラテック", "筑波精工", 
+        "クリエイティブテクノロジー", "東京エレクトロン"
+    ],
+    "海外企業": [
+        "Applied Materials", "Lam Research", "Entegris", 
+        "FM Industries", "MiCo", "SEMCO Engineering", 
+        "Calitech", "Beijing U-Precision"
+    ]
+}
 
-def create_main_dashboard():
-    """メインダッシュボードの作成"""
-    # ヘッダー部分
-    col1, col2, col3 = st.columns([1, 2, 1])
+# ESC関連キーワード
+ESC_KEYWORDS = {
+    "英語": [
+        "curved ESC", "flexible ESC", "bendable electrostatic chuck",
+        "variable curvature ESC", "conformal chuck", "wafer distortion control",
+        "substrate warpage", "electrostatic chuck", "ESC"
+    ],
+    "日本語": [
+        "静電チャック", "曲面チャック", "湾曲チャック", "可撓性チャック",
+        "曲面", "湾曲", "可撓性", "ウエハ反り", "基板歪み", "反り補正"
+    ]
+}
+
+def safe_nlargest(df, n, column):
+    """安全なnlargest関数"""
+    try:
+        if df.empty:
+            return pd.DataFrame()
+        
+        if column not in df.columns:
+            st.warning(f"カラム '{column}' が見つかりません。")
+            return pd.DataFrame()
+        
+        # NaNや無効な値を除外
+        valid_df = df.dropna(subset=[column]).copy()
+        
+        if valid_df.empty:
+            st.warning(f"'{column}' カラムに有効なデータがありません。")
+            return pd.DataFrame()
+        
+        # 日付の場合は適切に処理
+        if column == 'filing_date':
+            valid_df[column] = pd.to_datetime(valid_df[column], errors='coerce')
+            valid_df = valid_df.dropna(subset=[column])
+        
+        if valid_df.empty:
+            return pd.DataFrame()
+        
+        # nlargestを実行
+        return valid_df.nlargest(min(n, len(valid_df)), column)
+        
+    except Exception as e:
+        st.error(f"データ処理でエラーが発生しました: {str(e)}")
+        return pd.DataFrame()
+
+def generate_demo_data():
+    """デモデータ生成"""
+    np.random.seed(42)
     
-    with col2:
-        st.markdown("""
-        <div style="text-align: center; padding: 1rem 0;">
-            <h1 style="color: #1f77b4; font-size: 2.5rem; margin-bottom: 0.5rem;">
-                🔍 FusionPatentSearch
-            </h1>
-            <p style="color: #666; font-size: 1.2rem; margin-bottom: 0.5rem;">
-                東京科学大学 齊藤滋規教授プロジェクト
-            </p>
-            <p style="color: #888; font-size: 0.9rem; margin-bottom: 1.5rem;">
-                ESC特許動向分析システム - Professional Edition
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+    all_companies = TARGET_COMPANIES["日本企業"] + TARGET_COMPANIES["海外企業"]
+    years = list(range(2010, 2025))
     
-    analyzer = StreamlitESCAnalyzer()
+    data = []
+    patent_id = 1
     
-    # サイドバー設定
-    st.sidebar.header("⚙️ 分析設定")
+    for year in years:
+        for company in all_companies:
+            # 年度ごとの特許数をランダムに生成
+            num_patents = np.random.poisson(3) + 1
+            
+            for _ in range(num_patents):
+                filing_date = datetime(year, np.random.randint(1, 13), np.random.randint(1, 29))
+                
+                data.append({
+                    'patent_id': f'JP{patent_id:06d}',
+                    'title': f'曲面ESC技術に関する特許 #{patent_id}',
+                    'assignee': company,
+                    'filing_date': filing_date,
+                    'country': 'JP' if company in TARGET_COMPANIES["日本企業"] else 'US',
+                    'technology_category': np.random.choice(['基礎技術', '応用技術', '製造技術', '制御技術']),
+                    'abstract': f'この発明は{company}による曲面ESC技術の改良に関する。'
+                })
+                patent_id += 1
     
-    use_demo = st.sidebar.checkbox("デモデータを使用", value=True, help="BigQuery接続なしでデモデータで動作")
-    
-    analysis_type = st.sidebar.selectbox(
-        "分析タイプ",
-        ["概要分析", "企業別詳細", "技術トレンド", "競合比較", "タイムライン分析"]
-    )
-    
-    # データ読み込み
-    with st.spinner('データを読み込み中...'):
-        df = analyzer.search_patents_bigquery(use_demo=use_demo)
+    return pd.DataFrame(data)
+
+def create_overview_dashboard(df):
+    """概要分析ダッシュボード"""
+    st.markdown("## 📊 概要分析")
     
     if df.empty:
-        st.error("データが見つかりませんでした。")
+        st.warning("データがありません。")
         return
     
-    # メイン分析表示
-    if analysis_type == "概要分析":
-        show_overview_analysis(df, analyzer)
-    elif analysis_type == "企業別詳細":
-        show_company_analysis(df, analyzer)
-    elif analysis_type == "技術トレンド":
-        show_technology_trends(df, analyzer)
-    elif analysis_type == "競合比較":
-        show_competitive_analysis(df, analyzer)
-    elif analysis_type == "タイムライン分析":
-        show_timeline_analysis(df, analyzer)
-
-def show_overview_analysis(df, analyzer):
-    """概要分析の表示"""
-    st.header("📊 概要分析")
-    
-    # KPIメトリクス
+    # KPI指標
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("総特許数", f"{len(df):,}")
+        st.metric("総特許数", len(df))
+    
     with col2:
-        unique_companies = df['normalized_assignee'].nunique()
-        st.metric("出願企業数", f"{unique_companies}")
+        unique_companies = df['assignee'].nunique() if 'assignee' in df.columns else 0
+        st.metric("企業数", unique_companies)
+    
     with col3:
-        date_range = f"{df['filing_date'].min()[:4]}-{df['filing_date'].max()[:4]}"
+        if 'filing_date' in df.columns:
+            date_range = f"{df['filing_date'].min().year} - {df['filing_date'].max().year}"
+        else:
+            date_range = "N/A"
         st.metric("対象期間", date_range)
+    
     with col4:
-        target_patents = df[df['normalized_assignee'].isin(
-            list(analyzer.target_companies['Japanese'].keys()) + 
-            list(analyzer.target_companies['International'].keys())
-        )]
-        st.metric("ターゲット企業特許", f"{len(target_patents)}")
+        japan_count = len(df[df['assignee'].isin(TARGET_COMPANIES["日本企業"])]) if 'assignee' in df.columns else 0
+        st.metric("日本企業特許数", japan_count)
     
-    # グラフエリア
-    col1, col2 = st.columns(2)
+    st.markdown("---")
     
-    with col1:
-        st.subheader("📈 年次出願推移")
-        yearly_data = df.groupby('filing_year').size().reset_index()
-        yearly_data.columns = ['年', '特許数']
+    # 年次推移グラフ
+    if 'filing_date' in df.columns:
+        st.markdown("### 📈 年次推移")
         
-        fig = px.line(yearly_data, x='年', y='特許数', 
-                     title='ESC関連特許の年次推移',
-                     markers=True, line_shape='spline')
-        fig.update_layout(height=400)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        st.subheader("🏢 企業別出願件数 Top 10")
-        company_data = df['normalized_assignee'].value_counts().head(10).reset_index()
-        company_data.columns = ['企業', '特許数']
+        df_yearly = df.copy()
+        df_yearly['year'] = pd.to_datetime(df_yearly['filing_date']).dt.year
+        yearly_counts = df_yearly.groupby('year').size().reset_index(name='count')
         
-        fig = px.bar(company_data, x='特許数', y='企業', 
-                    title='企業別特許出願件数',
-                    orientation='h', color='特許数',
-                    color_continuous_scale='viridis')
-        fig.update_layout(height=400, yaxis={'categoryorder':'total ascending'})
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # 国別分布
-    st.subheader("🌍 国別特許分布")
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        country_data = df['country_code'].value_counts().head(8)
-        fig = px.pie(values=country_data.values, names=country_data.index,
-                    title='国別特許分布')
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # ターゲット企業の日本 vs 海外
-        target_patents = df[df['normalized_assignee'].isin(
-            list(analyzer.target_companies['Japanese'].keys()) + 
-            list(analyzer.target_companies['International'].keys())
-        )]
-        
-        if not target_patents.empty:
-            japanese_companies = set(analyzer.target_companies['Japanese'].keys())
-            target_patents_copy = target_patents.copy()
-            target_patents_copy['region'] = target_patents_copy['normalized_assignee'].apply(
-                lambda x: '日本企業' if x in japanese_companies else '海外企業'
-            )
-            region_data = target_patents_copy['region'].value_counts()
-            
-            fig = px.pie(values=region_data.values, names=region_data.index,
-                        title='ターゲット企業: 日本 vs 海外',
-                        color_discrete_map={'日本企業': '#ff9999', '海外企業': '#66b3ff'})
-            st.plotly_chart(fig, use_container_width=True)
-
-def show_company_analysis(df, analyzer):
-    """企業別詳細分析"""
-    st.header("🏢 企業別詳細分析")
-    
-    # 企業選択
-    all_companies = list(analyzer.target_companies['Japanese'].keys()) + list(analyzer.target_companies['International'].keys())
-    selected_companies = st.multiselect(
-        "分析対象企業を選択",
-        options=all_companies,
-        default=all_companies[:5]
-    )
-    
-    if not selected_companies:
-        st.warning("企業を選択してください。")
-        return
-    
-    company_data = df[df['normalized_assignee'].isin(selected_companies)]
-    
-    if company_data.empty:
-        st.warning("選択した企業のデータが見つかりません。")
-        return
-    
-    # 企業別統計
-    st.subheader("📊 企業別統計")
-    company_stats = company_data['normalized_assignee'].value_counts().reset_index()
-    company_stats.columns = ['企業', '特許数']
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = px.bar(company_stats, x='企業', y='特許数',
-                    title='選択企業の特許出願数',
-                    color='特許数', color_continuous_scale='Blues')
-        fig.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # 年次推移比較
-        yearly_company = company_data.pivot_table(
-            index='filing_year', 
-            columns='normalized_assignee', 
-            values='publication_number',
-            aggfunc='count',
-            fill_value=0
-        )
-        
-        fig = go.Figure()
-        for company in selected_companies:
-            if company in yearly_company.columns:
-                fig.add_trace(go.Scatter(
-                    x=yearly_company.index,
-                    y=yearly_company[company],
-                    mode='lines+markers',
-                    name=company[:15],
-                    line_shape='spline'
-                ))
-        
-        fig.update_layout(
-            title='企業別年次推移',
-            xaxis_title='年',
-            yaxis_title='特許数',
-            height=400
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # 企業詳細情報
-    st.subheader("🔍 企業詳細情報")
-    
-    for company in selected_companies:
-        company_patents = company_data[company_data['normalized_assignee'] == company]
-        if not company_patents.empty:
-            # 企業情報表示
-            jp_name = analyzer.target_companies['Japanese'].get(company) or \
-                     analyzer.target_companies['International'].get(company, company)
-            
-            st.markdown(f'<div class="company-highlight">', unsafe_allow_html=True)
-            st.markdown(f"**{company}** ({jp_name})")
-            
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("特許数", len(company_patents))
-            with col2:
-                countries = company_patents['country_code'].nunique()
-                st.metric("出願国数", countries)
-            with col3:
-                years = company_patents['filing_year'].nunique()
-                st.metric("出願年数", years)
-            with col4:
-                latest_year = company_patents['filing_year'].max()
-                st.metric("最新出願年", latest_year)
-            
-            # 最新特許リスト
-            with st.expander(f"{company} 最新特許 (Top 5)"):
-                if len(company_patents) > 0:
-                    recent_patents = company_patents.sort_values('filing_date', ascending=False).head(5)
-                    if not recent_patents.empty and all(col in recent_patents.columns for col in ['filing_date', 'title', 'country_code']):
-                        recent_patents = recent_patents[['filing_date', 'title', 'country_code']]
-                    else:
-                        recent_patents = pd.DataFrame(columns=['filing_date', 'title', 'country_code'])
-                else:
-                    recent_patents = pd.DataFrame(columns=['filing_date', 'title', 'country_code'])
-                
-                st.dataframe(recent_patents, use_container_width=True)
-                        
-            st.markdown('</div>', unsafe_allow_html=True)
-
-def show_technology_trends(df, analyzer):
-    """技術トレンド分析"""
-    st.header("📈 技術トレンド分析")
-    
-    # キーワード分析
-    st.subheader("🔍 技術キーワード分析")
-    
-    # 技術カテゴリ定義
-    tech_categories = {
-        'Temperature Control': ['temperature', 'thermal', 'heating', '温度', '加熱'],
-        'Curved/Flexible': ['curved', 'flexible', 'bendable', '曲面', '湾曲'],
-        'Material': ['ceramic', 'dielectric', 'material', 'セラミック', '誘電体'],
-        'Process': ['plasma', 'etching', 'deposition', 'プラズマ', 'エッチング'],
-        'Control': ['control', 'monitoring', 'sensor', '制御', 'センサ']
-    }
-    
-    # 年別技術トレンド分析
-    tech_trend_data = []
-    
-    for year in df['filing_year'].unique():
-        year_patents = df[df['filing_year'] == year]
-        year_text = ' '.join(year_patents['title'].fillna('').astype(str))
-        
-        for category, keywords in tech_categories.items():
-            count = 0
-            for keyword in keywords:
-                count += len(re.findall(keyword, year_text, re.IGNORECASE))
-            
-            tech_trend_data.append({
-                'year': year,
-                'category': category,
-                'count': count
-            })
-    
-    trend_df = pd.DataFrame(tech_trend_data)
-    
-    # 技術トレンド可視化
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        fig = px.line(trend_df, x='year', y='count', color='category',
-                     title='技術カテゴリ別トレンド',
+        fig = px.line(yearly_counts, x='year', y='count', 
+                     title='年次特許出願数推移',
                      markers=True)
         fig.update_layout(height=400)
         st.plotly_chart(fig, use_container_width=True)
     
-    with col2:
-        # 最新年の技術分布
-        latest_year = df['filing_year'].max()
-        latest_trend = trend_df[trend_df['year'] == latest_year]
+    # 企業別ランキング
+    if 'assignee' in df.columns:
+        col1, col2 = st.columns(2)
         
-        fig = px.bar(latest_trend, x='category', y='count',
-                    title=f'{latest_year}年 技術分野分布',
-                    color='count', color_continuous_scale='viridis')
-        fig.update_layout(height=400, xaxis_tickangle=-45)
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # ワードクラウド風表示
-    st.subheader("☁️ 頻出技術キーワード")
-    all_titles = ' '.join(df['title'].fillna('').astype(str))
-    
-    # シンプルなキーワード抽出
-    tech_words = ['electrostatic', 'chuck', 'temperature', 'ceramic', 'plasma', 
-                  'control', 'heating', 'flexible', 'curved', 'substrate']
-    
-    word_counts = []
-    for word in tech_words:
-        count = len(re.findall(word, all_titles, re.IGNORECASE))
-        if count > 0:
-            word_counts.append({'word': word, 'count': count})
-    
-    if word_counts:
-        word_df = pd.DataFrame(word_counts).sort_values('count', ascending=True)
-        fig = px.bar(word_df, x='count', y='word', orientation='h',
-                    title='技術キーワード出現頻度',
-                    color='count', color_continuous_scale='plasma')
-        st.plotly_chart(fig, use_container_width=True)
+        with col1:
+            st.markdown("### 🏆 企業別ランキング（TOP10）")
+            company_counts = df['assignee'].value_counts().head(10)
+            
+            fig = px.bar(
+                x=company_counts.values,
+                y=company_counts.index,
+                orientation='h',
+                title="企業別特許数",
+                labels={'x': '特許数', 'y': '企業'}
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.markdown("### 🌍 日本 vs 海外比較")
+            
+            japan_patents = df[df['assignee'].isin(TARGET_COMPANIES["日本企業"])]
+            overseas_patents = df[df['assignee'].isin(TARGET_COMPANIES["海外企業"])]
+            
+            comparison_data = pd.DataFrame({
+                '地域': ['日本', '海外'],
+                '特許数': [len(japan_patents), len(overseas_patents)]
+            })
+            
+            fig = px.pie(comparison_data, values='特許数', names='地域',
+                        title="地域別特許分布")
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
 
-def show_competitive_analysis(df, analyzer):
-    """競合比較分析"""
-    st.header("⚔️ 競合比較分析")
+def create_company_analysis(df, selected_company):
+    """企業別詳細分析"""
+    st.markdown(f"## 🏢 企業別分析: {selected_company}")
     
-    # ターゲット企業の抽出
-    target_patents = df[df['normalized_assignee'].isin(
-        list(analyzer.target_companies['Japanese'].keys()) + 
-        list(analyzer.target_companies['International'].keys())
-    )]
-    
-    if target_patents.empty:
-        st.warning("ターゲット企業のデータがありません。")
+    if df.empty:
+        st.warning("データがありません。")
         return
     
-    # 日本 vs 海外企業比較
-    st.subheader("🌏 日本企業 vs 海外企業")
+    # 選択企業のデータをフィルタリング
+    company_df = df[df['assignee'] == selected_company] if 'assignee' in df.columns else pd.DataFrame()
     
-    japanese_companies = set(analyzer.target_companies['Japanese'].keys())
-    target_patents_copy = target_patents.copy()
-    target_patents_copy['region'] = target_patents_copy['normalized_assignee'].apply(
-        lambda x: '日本企業' if x in japanese_companies else '海外企業'
-    )
+    if company_df.empty:
+        st.warning(f"{selected_company}のデータがありません。")
+        return
     
-    col1, col2 = st.columns(2)
+    # 企業情報カード
+    st.markdown(f"""
+    <div class="company-card">
+        <h3>📋 {selected_company} 基本情報</h3>
+        <p><strong>総特許数:</strong> {len(company_df)}</p>
+        <p><strong>最新出願:</strong> {company_df['filing_date'].max().strftime('%Y-%m-%d') if 'filing_date' in company_df.columns else 'N/A'}</p>
+        <p><strong>出願期間:</strong> {company_df['filing_date'].min().year if 'filing_date' in company_df.columns else 'N/A'} - {company_df['filing_date'].max().year if 'filing_date' in company_df.columns else 'N/A'}</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with col1:
-        # 地域別出願数
-        region_stats = target_patents_copy['region'].value_counts()
-        fig = px.pie(values=region_stats.values, names=region_stats.index,
-                    title='地域別特許分布',
-                    color_discrete_map={'日本企業': '#ff9999', '海外企業': '#66b3ff'})
-        st.plotly_chart(fig, use_container_width=True)
-    
-    with col2:
-        # 地域別年次推移
-        region_yearly = target_patents_copy.pivot_table(
-            index='filing_year',
-            columns='region',
-            values='publication_number',
-            aggfunc='count',
-            fill_value=0
-        )
-        
-        fig = go.Figure()
-        for region in region_yearly.columns:
-            fig.add_trace(go.Scatter(
-                x=region_yearly.index,
-                y=region_yearly[region],
-                mode='lines+markers',
-                name=region,
-                line_shape='spline'
-            ))
-        
-        fig.update_layout(
-            title='地域別年次推移',
-            xaxis_title='年',
-            yaxis_title='特許数',
-            height=400
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # 企業別詳細比較
-    st.subheader("🏢 企業別詳細比較")
-    
-    # ヒートマップ用データ作成
-    company_year_data = target_patents.pivot_table(
-        index='normalized_assignee',
-        columns='filing_year', 
-        values='publication_number',
-        aggfunc='count',
-        fill_value=0
-    )
-    
-    if not company_year_data.empty:
-        # Plotly heatmap
-        fig = go.Figure(data=go.Heatmap(
-            z=company_year_data.values,
-            x=company_year_data.columns,
-            y=company_year_data.index,
-            colorscale='viridis',
-            showscale=True
-        ))
-        
-        fig.update_layout(
-            title='企業×年度 出願ヒートマップ',
-            xaxis_title='年度',
-            yaxis_title='企業',
-            height=600
-        )
-        st.plotly_chart(fig, use_container_width=True)
-    
-    # 競合ランキング
-    st.subheader("🏆 競合ランキング")
+    st.markdown("---")
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("**日本企業ランキング**")
-        jp_companies = target_patents[target_patents['normalized_assignee'].isin(japanese_companies)]
-        jp_ranking = jp_companies['normalized_assignee'].value_counts()
-        
-        for i, (company, count) in enumerate(jp_ranking.items(), 1):
-            jp_name = analyzer.target_companies['Japanese'].get(company, company)
-            st.markdown(f"{i}. **{company}** ({jp_name}): {count}件")
+        # 年次推移
+        if 'filing_date' in company_df.columns:
+            st.markdown("### 📊 年次推移")
+            company_yearly = company_df.copy()
+            company_yearly['year'] = pd.to_datetime(company_yearly['filing_date']).dt.year
+            yearly_counts = company_yearly.groupby('year').size().reset_index(name='count')
+            
+            fig = px.bar(yearly_counts, x='year', y='count',
+                        title=f"{selected_company} 年次特許出願数")
+            st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        st.markdown("**海外企業ランキング**")
-        intl_companies_set = set(analyzer.target_companies['International'].keys())
-        intl_companies = target_patents[target_patents['normalized_assignee'].isin(intl_companies_set)]
-        intl_ranking = intl_companies['normalized_assignee'].value_counts()
-        
-        for i, (company, count) in enumerate(intl_ranking.items(), 1):
-            intl_name = analyzer.target_companies['International'].get(company, company)
-            st.markdown(f"{i}. **{company}** ({intl_name}): {count}件")
-
-def show_timeline_analysis(df, analyzer):
-    """タイムライン分析"""
-    st.header("⏰ タイムライン分析")
-    
-    # 年度フィルタ
-    min_year, max_year = int(df['filing_year'].min()), int(df['filing_year'].max())
-    selected_years = st.slider(
-        "分析対象年度",
-        min_value=min_year,
-        max_value=max_year,
-        value=(max_year-5, max_year),
-        step=1
-    )
-    
-    filtered_df = df[
-        (df['filing_year'] >= selected_years[0]) & 
-        (df['filing_year'] <= selected_years[1])
-    ]
-    
-    # タイムライン可視化
-    st.subheader("📅 特許出願タイムライン")
-    
-    timeline_data = filtered_df.groupby(['filing_year', 'normalized_assignee']).size().reset_index()
-    timeline_data.columns = ['年度', '企業', '特許数']
-    
-    # 主要企業のみ表示
-    top_companies = df['normalized_assignee'].value_counts().head(10).index
-    timeline_filtered = timeline_data[timeline_data['企業'].isin(top_companies)]
-    
-    fig = px.line(timeline_filtered, x='年度', y='特許数', color='企業',
-                 title=f'{selected_years[0]}-{selected_years[1]}年 企業別特許出願推移',
-                 markers=True, line_shape='spline')
-    
-    fig.update_layout(height=500)
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 重要な出来事のハイライト
-    st.subheader("🌟 重要な出来事")
-    
-    # 各年の上位出願企業
-    for year in range(selected_years[1], selected_years[0]-1, -1):
-        year_data = filtered_df[filtered_df['filing_year'] == year]
-        if not year_data.empty:
-            top_company = year_data['normalized_assignee'].value_counts().head(1)
-            if not top_company.empty:
-                company, count = top_company.index[0], top_company.iloc[0]
-                st.markdown(f"**{year}年**: {company} が {count}件で最多出願")
+        # 技術カテゴリ分布
+        if 'technology_category' in company_df.columns:
+            st.markdown("### 🔬 技術カテゴリ分布")
+            tech_counts = company_df['technology_category'].value_counts()
+            
+            fig = px.pie(values=tech_counts.values, names=tech_counts.index,
+                        title="技術カテゴリ別特許分布")
+            st.plotly_chart(fig, use_container_width=True)
     
     # 最新特許リスト
-    st.subheader("📋 最新特許リスト")
-    
-    latest_patents = filtered_df.nlargest(20, 'filing_date')[
-        ['filing_date', 'normalized_assignee', 'title', 'country_code']
-    ].copy()
-    
-    latest_patents.columns = ['出願日', '出願人', 'タイトル', '国コード']
-    st.dataframe(latest_patents, use_container_width=True)
+    st.markdown("### 📝 最新特許リスト")
+    if 'filing_date' in company_df.columns:
+        latest_patents = safe_nlargest(company_df, 10, 'filing_date')
+        if not latest_patents.empty:
+            display_columns = ['patent_id', 'title', 'filing_date']
+            available_columns = [col for col in display_columns if col in latest_patents.columns]
+            st.dataframe(latest_patents[available_columns], use_container_width=True)
+        else:
+            st.info("表示する最新特許がありません。")
 
-# メイン実行
+def create_technology_trends(df):
+    """技術トレンド分析"""
+    st.markdown("## 🔬 技術トレンド分析")
+    
+    if df.empty:
+        st.warning("データがありません。")
+        return
+    
+    # 技術キーワード分析
+    st.markdown("### 🔍 技術キーワード分析")
+    
+    # サンプルキーワード頻度データを生成
+    keywords = ESC_KEYWORDS["英語"] + ESC_KEYWORDS["日本語"]
+    keyword_counts = {keyword: np.random.randint(5, 50) for keyword in keywords[:10]}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # 頻出キーワードランキング
+        st.markdown("#### 📊 頻出キーワードTOP10")
+        keyword_df = pd.DataFrame(list(keyword_counts.items()), columns=['Keyword', 'Count'])
+        keyword_df = keyword_df.sort_values('Count', ascending=True)
+        
+        fig = px.bar(keyword_df, x='Count', y='Keyword', orientation='h',
+                    title="キーワード出現頻度")
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # ワードクラウド
+        st.markdown("#### ☁️ キーワードクラウド")
+        try:
+            wordcloud = WordCloud(
+                width=400, height=300,
+                background_color='white',
+                font_path=None,
+                relative_scaling=0.5,
+                colormap='viridis'
+            ).generate_from_frequencies(keyword_counts)
+            
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis('off')
+            st.pyplot(fig)
+        except Exception as e:
+            st.info("ワードクラウドの生成に失敗しました。")
+    
+    # 技術カテゴリトレンド
+    if 'technology_category' in df.columns and 'filing_date' in df.columns:
+        st.markdown("### 📈 技術カテゴリ別トレンド")
+        
+        df_trend = df.copy()
+        df_trend['year'] = pd.to_datetime(df_trend['filing_date']).dt.year
+        
+        category_trend = df_trend.groupby(['year', 'technology_category']).size().reset_index(name='count')
+        
+        fig = px.line(category_trend, x='year', y='count', color='technology_category',
+                     title="技術カテゴリ別年次推移", markers=True)
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+def create_competitive_analysis(df):
+    """競合比較分析"""
+    st.markdown("## ⚔️ 競合比較分析")
+    
+    if df.empty:
+        st.warning("データがありません。")
+        return
+    
+    # 日本企業 vs 海外企業比較
+    st.markdown("### 🌍 日本企業 vs 海外企業")
+    
+    if 'assignee' in df.columns:
+        japan_companies = [comp for comp in df['assignee'].unique() 
+                          if comp in TARGET_COMPANIES["日本企業"]]
+        overseas_companies = [comp for comp in df['assignee'].unique() 
+                             if comp in TARGET_COMPANIES["海外企業"]]
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # 日本企業ランキング
+            st.markdown("#### 🇯🇵 日本企業TOP5")
+            japan_df = df[df['assignee'].isin(japan_companies)]
+            japan_ranking = japan_df['assignee'].value_counts().head(5)
+            
+            if not japan_ranking.empty:
+                fig = px.bar(x=japan_ranking.values, y=japan_ranking.index, orientation='h',
+                            title="日本企業特許数ランキング")
+                fig.update_layout(height=300)
+                st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            # 海外企業ランキング
+            st.markdown("#### 🌎 海外企業TOP5")
+            overseas_df = df[df['assignee'].isin(overseas_companies)]
+            overseas_ranking = overseas_df['assignee'].value_counts().head(5)
+            
+            if not overseas_ranking.empty:
+                fig = px.bar(x=overseas_ranking.values, y=overseas_ranking.index, orientation='h',
+                            title="海外企業特許数ランキング")
+                fig.update_layout(height=300)
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # 企業×年度ヒートマップ
+    if 'assignee' in df.columns and 'filing_date' in df.columns:
+        st.markdown("### 🔥 企業×年度ヒートマップ")
+        
+        df_heatmap = df.copy()
+        df_heatmap['year'] = pd.to_datetime(df_heatmap['filing_date']).dt.year
+        
+        # 上位10社のみを表示
+        top_companies = df['assignee'].value_counts().head(10).index
+        df_heatmap = df_heatmap[df_heatmap['assignee'].isin(top_companies)]
+        
+        heatmap_data = df_heatmap.groupby(['assignee', 'year']).size().unstack(fill_value=0)
+        
+        if not heatmap_data.empty:
+            fig = px.imshow(heatmap_data, 
+                           title="企業×年度別特許出願数ヒートマップ",
+                           labels=dict(x="年度", y="企業", color="特許数"))
+            fig.update_layout(height=500)
+            st.plotly_chart(fig, use_container_width=True)
+
+def create_timeline_analysis(df):
+    """タイムライン分析"""
+    st.markdown("## ⏰ タイムライン分析")
+    
+    if df.empty:
+        st.warning("データがありません。")
+        return
+    
+    if 'filing_date' not in df.columns:
+        st.warning("日付データがありません。")
+        return
+    
+    # 年度フィルタ
+    df_copy = df.copy()
+    df_copy['filing_date'] = pd.to_datetime(df_copy['filing_date'])
+    
+    min_year = int(df_copy['filing_date'].dt.year.min())
+    max_year = int(df_copy['filing_date'].dt.year.max())
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        start_year = st.slider("開始年", min_year, max_year, min_year)
+    with col2:
+        end_year = st.slider("終了年", min_year, max_year, max_year)
+    
+    # フィルタリング
+    filtered_df = df_copy[
+        (df_copy['filing_date'].dt.year >= start_year) & 
+        (df_copy['filing_date'].dt.year <= end_year)
+    ]
+    
+    if filtered_df.empty:
+        st.warning("選択された期間にデータがありません。")
+        return
+    
+    # 期間別統計
+    st.markdown("### 📊 期間別統計")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("期間内特許数", len(filtered_df))
+    
+    with col2:
+        active_companies = filtered_df['assignee'].nunique() if 'assignee' in filtered_df.columns else 0
+        st.metric("活動企業数", active_companies)
+    
+    with col3:
+        avg_per_year = len(filtered_df) / max(1, (end_year - start_year + 1))
+        st.metric("年平均出願数", f"{avg_per_year:.1f}")
+    
+    # 企業別推移比較
+    if 'assignee' in filtered_df.columns:
+        st.markdown("### 📈 主要企業の推移比較")
+        
+        # 上位5社を選択
+        top5_companies = filtered_df['assignee'].value_counts().head(5).index
+        
+        selected_companies = st.multiselect(
+            "比較する企業を選択してください：",
+            options=top5_companies.tolist(),
+            default=top5_companies.tolist()[:3]
+        )
+        
+        if selected_companies:
+            company_trend_data = []
+            
+            for company in selected_companies:
+                company_data = filtered_df[filtered_df['assignee'] == company].copy()
+                company_data['year'] = company_data['filing_date'].dt.year
+                yearly_counts = company_data.groupby('year').size().reset_index(name='count')
+                yearly_counts['company'] = company
+                company_trend_data.append(yearly_counts)
+            
+            if company_trend_data:
+                all_trends = pd.concat(company_trend_data, ignore_index=True)
+                
+                fig = px.line(all_trends, x='year', y='count', color='company',
+                             title="選択企業の年次推移比較", markers=True)
+                fig.update_layout(height=400)
+                st.plotly_chart(fig, use_container_width=True)
+    
+    # 最新特許リスト
+    st.markdown("### 📝 期間内最新特許リスト")
+    
+    latest_patents = safe_nlargest(filtered_df, 20, 'filing_date')
+    if not latest_patents.empty:
+        display_columns = ['patent_id', 'title', 'assignee', 'filing_date']
+        available_columns = [col for col in display_columns if col in latest_patents.columns]
+        st.dataframe(latest_patents[available_columns], use_container_width=True)
+    else:
+        st.info("表示する特許がありません。")
+
+def main():
+    """メイン関数"""
+    
+    # ヘッダー
+    st.markdown("""
+    <div class="main-header">
+        🔍 FusionPatentSearch<br>
+        <small>ESC特許分析システム - 東京科学大学 齊藤滋規教授プロジェクト</small>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # サイドバー
+    with st.sidebar:
+        st.markdown('<div class="sidebar-header">⚙️ 分析設定</div>', unsafe_allow_html=True)
+        
+        # 分析タイプ選択
+        analysis_type = st.selectbox(
+            "分析タイプを選択:",
+            ["概要分析", "企業別詳細分析", "技術トレンド分析", "競合比較分析", "タイムライン分析"]
+        )
+        
+        st.markdown("---")
+        
+        # データソース選択
+        use_demo_data = st.checkbox("デモデータを使用", value=True)
+        
+        if use_demo_data:
+            st.info("💡 デモデータを使用しています。実際のBigQueryデータへの接続は設定が必要です。")
+        
+        st.markdown("---")
+        
+        # 企業選択（企業別分析の場合）
+        selected_company = None
+        if analysis_type == "企業別詳細分析":
+            all_companies = TARGET_COMPANIES["日本企業"] + TARGET_COMPANIES["海外企業"]
+            selected_company = st.selectbox("企業を選択:", all_companies)
+        
+        st.markdown("---")
+        
+        # システム情報
+        st.markdown("### ℹ️ システム情報")
+        st.markdown("""
+        - **バージョン**: v1.0.0
+        - **最終更新**: 2024年7月
+        - **開発**: 東京科学大学
+        - **GitHub**: [FusionPatentSearch](https://github.com/koji276/FusionPatentSearch)
+        """)
+    
+    # データ読み込み
+    try:
+        if use_demo_data:
+            with st.spinner("デモデータを生成しています..."):
+                df = generate_demo_data()
+                st.success(f"✅ デモデータを読み込みました（{len(df)}件の特許データ）")
+        else:
+            st.warning("⚠️ BigQueryデータベースへの接続設定が必要です。現在はデモデータのみ利用可能です。")
+            df = generate_demo_data()
+    
+    except Exception as e:
+        st.error(f"❌ データの読み込みに失敗しました: {str(e)}")
+        st.info("デモデータを使用します。")
+        df = generate_demo_data()
+    
+    # 分析画面の表示
+    try:
+        if analysis_type == "概要分析":
+            create_overview_dashboard(df)
+        
+        elif analysis_type == "企業別詳細分析":
+            if selected_company:
+                create_company_analysis(df, selected_company)
+            else:
+                st.warning("企業を選択してください。")
+        
+        elif analysis_type == "技術トレンド分析":
+            create_technology_trends(df)
+        
+        elif analysis_type == "競合比較分析":
+            create_competitive_analysis(df)
+        
+        elif analysis_type == "タイムライン分析":
+            create_timeline_analysis(df)
+    
+    except Exception as e:
+        st.error(f"❌ 分析処理でエラーが発生しました: {str(e)}")
+        st.info("データの形式や内容を確認してください。")
+    
+    # フッター
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #666; padding: 2rem;'>
+        <p>🔬 <strong>FusionPatentSearch</strong> - Developed by Tokyo Institute of Science and Technology</p>
+        <p>📧 Contact: <a href="mailto:saito@titech.ac.jp">saito@titech.ac.jp</a> | 
+           📚 <a href="https://github.com/koji276/FusionPatentSearch">GitHub Repository</a></p>
+        <p><small>© 2024 Tokyo Institute of Science and Technology. All rights reserved.</small></p>
+    </div>
+    """, unsafe_allow_html=True)
+
 if __name__ == "__main__":
-    create_main_dashboard()
+    main()
