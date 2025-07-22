@@ -13,6 +13,14 @@ from collections import Counter
 from wordcloud import WordCloud
 import networkx as nx
 
+# BigQuery接続モジュール
+try:
+    from bigquery_connector import create_bigquery_connection
+    BIGQUERY_AVAILABLE = True
+except ImportError:
+    BIGQUERY_AVAILABLE = False
+    st.warning("BigQuery接続モジュールが見つかりません。デモモードで動作します。")
+
 # 日本語フォント設定
 plt.rcParams['font.family'] = ['DejaVu Sans', 'Hiragino Sans', 'Yu Gothic', 'Meiryo', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 warnings.filterwarnings('ignore')
@@ -119,7 +127,87 @@ def safe_nlargest(df, n, column):
         st.error(f"データ処理でエラーが発生しました: {str(e)}")
         return pd.DataFrame()
 
-def generate_demo_data():
+def load_patent_data(use_demo_data=True, bq_connector=None):
+    """特許データを読み込む（デモデータまたはBigQuery）"""
+    
+    if use_demo_data or not BIGQUERY_AVAILABLE or bq_connector is None:
+        # デモデータを生成
+        return generate_demo_data()
+    
+    else:
+        # BigQueryから実データを取得
+        try:
+            with st.spinner("BigQueryから特許データを取得中..."):
+                df, message = bq_connector.search_esc_patents(
+                    start_date='2010-01-01', 
+                    limit=1000
+                )
+                
+                if df is not None:
+                    st.success(f"✅ {message}")
+                    
+                    # データ形式を統一
+                    df = df.rename(columns={
+                        'title': 'title',
+                        'abstract': 'abstract', 
+                        'assignee': 'assignee',
+                        'filing_date': 'filing_date',
+                        'country_code': 'country'
+                    })
+                    
+                    # 技術カテゴリを追加（シンプルな分類）
+                    df['technology_category'] = df['title'].apply(classify_technology)
+                    
+                    return df
+                else:
+                    st.error(f"❌ データ取得エラー: {message}")
+                    st.info("デモデータを使用します。")
+                    return generate_demo_data()
+                    
+        except Exception as e:
+            st.error(f"❌ BigQuery接続エラー: {str(e)}")
+            st.info("デモデータを使用します。")
+            return generate_demo_data()
+
+def classify_technology(title):
+    """タイトルから技術カテゴリを分類"""
+    if pd.isna(title):
+        return "その他"
+    
+    title_lower = title.lower()
+    
+    if any(keyword in title_lower for keyword in ['control', 'method', 'process']):
+        return "制御技術"
+    elif any(keyword in title_lower for keyword in ['manufacturing', 'production', 'fabrication']):
+        return "製造技術" 
+    elif any(keyword in title_lower for keyword in ['application', 'system', 'apparatus']):
+        return "応用技術"
+    else:
+        return "基礎技術"
+
+def initialize_bigquery_connection():
+    """BigQuery接続を初期化"""
+    if not BIGQUERY_AVAILABLE:
+        return None, "BigQuery接続モジュールが利用できません"
+    
+    try:
+        bq_connector = create_bigquery_connection()
+        
+        # Streamlit Secretsから認証情報を読み込み
+        success, message = bq_connector.connect_with_streamlit_secrets()
+        
+        if success:
+            # 接続テスト
+            test_success, test_message = bq_connector.test_connection()
+            if test_success:
+                return bq_connector, f"✅ {test_message}"
+            else:
+                return None, f"❌ 接続テスト失敗: {test_message}"
+        else:
+            return None, f"❌ 認証失敗: {message}"
+            
+    except Exception as e:
+        return None, f"❌ 初期化エラー: {str(e)}"
     """デモデータ生成"""
     np.random.seed(42)
     
@@ -531,8 +619,26 @@ def main():
         st.markdown("---")
         
         # データソース選択
+        st.markdown("### 📊 データソース")
         use_demo_data = st.checkbox("デモデータを使用", value=True)
         
+        # BigQuery接続状態表示
+        bq_connector = None
+        if BIGQUERY_AVAILABLE and not use_demo_data:
+            with st.spinner("BigQuery接続を確認中..."):
+                bq_connector, bq_message = initialize_bigquery_connection()
+                
+            if bq_connector:
+                st.success(bq_message)
+            else:
+                st.error(bq_message)
+                st.info("💡 Streamlit Secretsに認証情報を設定してください。")
+                use_demo_data = st.checkbox("デモデータを使用", value=True, key="fallback_demo")
+        
+        elif not BIGQUERY_AVAILABLE:
+            st.info("💡 BigQuery接続にはgoogle-cloud-bigqueryが必要です。")
+        
+        # データ取得状況表示
         if use_demo_data:
             st.info("💡 デモデータを使用しています。実際のBigQueryデータへの接続は設定が必要です。")
         
@@ -558,13 +664,13 @@ def main():
     
     # データ読み込み
     try:
-        if use_demo_data:
-            with st.spinner("デモデータを生成しています..."):
-                df = generate_demo_data()
-                st.success(f"✅ デモデータを読み込みました（{len(df)}件の特許データ）")
+        with st.spinner("データを読み込み中..."):
+            df = load_patent_data(use_demo_data=use_demo_data, bq_connector=bq_connector)
+            
+        if not use_demo_data and bq_connector:
+            st.success(f"✅ BigQueryから実データを読み込みました（{len(df)}件の特許データ）")
         else:
-            st.warning("⚠️ BigQueryデータベースへの接続設定が必要です。現在はデモデータのみ利用可能です。")
-            df = generate_demo_data()
+            st.success(f"✅ デモデータを読み込みました（{len(df)}件の特許データ）")
     
     except Exception as e:
         st.error(f"❌ データの読み込みに失敗しました: {str(e)}")
