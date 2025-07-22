@@ -910,78 +910,54 @@ def main():
             num_companies = mode_companies[collection_mode]
             selected_companies = companies_preview[:num_companies]
             
-            # 企業表示（5行 x 4列 = 20スロット）- 完全静的表示
-            st.markdown("**収集対象企業一覧（17社）:**")
+            # 企業表示部分を完全に置き換え
+            st.markdown("#### 🏢 収集対象企業（17社）")
             
-            # 1行目 - 主要日本企業
+            # 静的企業リスト - チェックボックス形式で表示
+            st.markdown("**✅ 日本企業（9社）:**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("• Tokyo Electron 🇯🇵")
+                st.markdown("• Kyocera 🇯🇵")
+                st.markdown("• Shinko Electric 🇯🇵")
+            with col2:
+                st.markdown("• TOTO 🇯🇵")
+                st.markdown("• NGK Insulators 🇯🇵")
+                st.markdown("• NTK Ceratec 🇯🇵")
+            with col3:
+                st.markdown("• Creative Technology 🇯🇵")
+                st.markdown("• Tsukuba Seiko 🇯🇵")
+                st.markdown("• Sumitomo Osaka Cement 🇯🇵")
+            
+            st.markdown("**✅ 米国企業（4社）:**")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.markdown("✅ **Tokyo Electron** 🇯🇵")
+                st.markdown("• Applied Materials 🇺🇸")
             with col2:
-                st.markdown("✅ **Kyocera** 🇯🇵")  
+                st.markdown("• Lam Research 🇺🇸")
             with col3:
-                st.markdown("✅ **Shinko Electric** 🇯🇵")
+                st.markdown("• Entegris 🇺🇸")
             with col4:
-                st.markdown("✅ **TOTO** 🇯🇵")
+                st.markdown("• FM Industries 🇺🇸→🇯🇵")
             
-            # 2行目 - 日本企業続き
+            st.markdown("**✅ アジア・欧州企業（4社）:**")
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                st.markdown("✅ **NGK Insulators** 🇯🇵")
+                st.markdown("• MiCo 🇰🇷")
             with col2:
-                st.markdown("✅ **NTK Ceratec** 🇯🇵")
+                st.markdown("• SEMCO Engineering 🇫🇷")
             with col3:
-                st.markdown("✅ **Creative Technology** 🇯🇵")
+                st.markdown("• Calitech 🇹🇼")
             with col4:
-                st.markdown("✅ **Tsukuba Seiko** 🇯🇵")
+                st.markdown("• Beijing U-Precision 🇨🇳")
             
-            # 3行目 - 日本セメント + 米国企業
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown("✅ **Sumitomo Osaka Cement** 🇯🇵")
-            with col2:
-                st.markdown("✅ **Applied Materials** 🇺🇸")
-            with col3:
-                st.markdown("✅ **Lam Research** 🇺🇸")
-            with col4:
-                st.markdown("✅ **Entegris** 🇺🇸")
-            
-            # 4行目 - 米国M&A + 韓国・フランス
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown("✅ **FM Industries** 🇺🇸→🇯🇵")
-            with col2:
-                st.markdown("✅ **MiCo** 🇰🇷")
-            with col3:
-                st.markdown("✅ **SEMCO Engineering** 🇫🇷")
-            with col4:
-                st.markdown("✅ **Calitech** 🇹🇼")
-            
-            # 5行目 - 中国企業
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown("✅ **Beijing U-Precision** 🇨🇳")
-            with col2:
-                st.markdown("🌍 **グローバル17社**")
-            with col3:
-                st.markdown("🏭 **425+特許**")  
-            with col4:
-                st.markdown("📊 **6地域対応**")
-                
-            # 統計情報
+            # 企業数の確認表示
             st.markdown("""
-            <div style="background: #f0f8ff; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
-                <h5>🌏 地域別企業分布</h5>
-                <p>🇯🇵 <strong>日本</strong>: 9社 | 🇺🇸 <strong>米国</strong>: 4社 | 🇰🇷 <strong>韓国</strong>: 1社 | 🇫🇷 <strong>フランス</strong>: 1社 | 🇹🇼 <strong>台湾</strong>: 1社 | 🇨🇳 <strong>中国</strong>: 1社</p>
-            </div>
-            """, unsafe_allow_html=True)
-                
-            # M&A情報の補足説明
-            st.markdown("""
-            <div style="background: #e7f3ff; padding: 1rem; border-radius: 8px; margin-top: 0.5rem;">
-                <h5>🏢 M&A履歴</h5>
-                <p><strong>FM Industries (米国)</strong> → 2002年に日本ガイシ（NGK Insulators）が買収</p>
-                <p>グローバルESC技術統合戦略の一環として実現</p>
+            <div style="background: #d4edda; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
+                <h5>📊 収集統計</h5>
+                <p><strong>総企業数</strong>: 17社</p>
+                <p><strong>総特許数</strong>: 425+件（各社25件）</p>
+                <p><strong>地域分布</strong>: 日本(9) | 米国(4) | 韓国(1) | フランス(1) | 台湾(1) | 中国(1)</p>
             </div>
             """, unsafe_allow_html=True)
         
@@ -992,7 +968,7 @@ def main():
                 "標準収集 (50件)": {"size": "~8MB", "time": "8-12分", "success": "70-80%"},
                 "拡張収集 (100件)": {"size": "~15MB", "time": "15-20分", "success": "65-75%"},
                 "大量収集 (200件)": {"size": "~30MB", "time": "25-35分", "success": "60-70%"},
-                "全件 (60+実在特許)": {"size": "~50MB", "time": "40-60分", "success": "55-65%"}
+                "全件 (425+実在特許)": {"size": "~60MB", "time": "50-80分", "success": "55-65%"}
             }
             
             config = mode_config[collection_mode]
