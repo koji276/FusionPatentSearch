@@ -523,33 +523,43 @@ def timeline_analysis(df):
             """, unsafe_allow_html=True)
 
 # メイン処理
+# メイン処理の修正（streamlit_app.py の main() 関数を置き換え）
+
 def main():
     # データ読み込み
     try:
-        with st.spinner("データを読み込み中..."):
-            df = load_patent_data(use_demo_data=use_demo_data, bq_connector=bq_connector)
-        
-        if not use_demo_data and bq_connector:
-            st.success(f"✅ BigQueryから実データを読み込みました（{len(df)}件）")
-        else:
-            if data_source == "PatentsView API":
-                # === 修正：PatentsView APIを使用 ===
-                st.info("🔍 PatentsView API からデータを取得中...")
+        if data_source == "PatentsView API":
+            # === PatentsView APIから実データ取得 ===
+            st.info("🔍 PatentsView API からデータを取得中...")
+            with st.spinner("実データを取得中..."):
                 df = connector.search_esc_patents(
                     start_date=f"{start_year}-01-01",
                     limit=max_patents,
                     use_sample=False,
                     data_source="PatentsView API"
                 )
+            
+            if not df.empty:
+                # データソースを確認
+                if 'data_source' in df.columns and 'PatentsView API' in df['data_source'].iloc[0]:
+                    st.success(f"✅ **実データ取得成功！** PatentsView APIから{len(df)}件の特許データを取得")
+                else:
+                    st.warning(f"⚠️ APIから取得できず、デモデータを使用中（{len(df)}件）")
             else:
-                st.info(f"📊 デモデータを使用中（{len(df)}件）")
+                st.error("❌ データ取得に失敗しました")
+                df = connector.get_demo_data()
+        
+        else:
+            # === デモデータ使用 ===
+            with st.spinner("デモデータを読み込み中..."):
+                df = load_patent_data(use_demo_data=True, bq_connector=None)
+            st.info(f"📊 デモデータを使用中（{len(df)}件）")
         
     except Exception as e:
         st.error(f"❌ データの読み込みに失敗しました: {str(e)}")
         st.info("デモデータを使用します。")
-        # === 修正：エラー時のデモデータ使用 ===
-        connector = DualPatentConnector()
-        df = connector.get_demo_data()
+        connector_fallback = DualPatentConnector()
+        df = connector_fallback.get_demo_data()
     
     # 分析画面の表示
     try:
