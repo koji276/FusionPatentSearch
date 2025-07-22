@@ -10,12 +10,8 @@ try:
     from dual_patent_connector import DualPatentConnector
     DUAL_CONNECTOR_AVAILABLE = True
 except ImportError:
-    # フォールバック: 既存のコネクタを使用
-    try:
-        from bigquery_connector import BigQueryConnector as DualPatentConnector
-        DUAL_CONNECTOR_AVAILABLE = True
-    except ImportError:
-        DUAL_CONNECTOR_AVAILABLE = False
+    DUAL_CONNECTOR_AVAILABLE = False
+    st.error("❌ dual_patent_connector.py が見つかりません")
 
 # ページ設定
 st.set_page_config(
@@ -25,8 +21,35 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# カスタムCSS
+st.markdown("""
+<style>
+.main-header {
+    font-size: 2.5rem;
+    font-weight: bold;
+    color: #1f77b4;
+    text-align: center;
+    margin-bottom: 2rem;
+}
+.success-box {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    border-radius: 5px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+.warning-box {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    border-radius: 5px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # メインヘッダー
-st.markdown('<div style="font-size: 2.5rem; font-weight: bold; color: #1f77b4; text-align: center; margin-bottom: 2rem;">🔍 FusionPatentSearch</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🔍 FusionPatentSearch</div>', unsafe_allow_html=True)
 st.markdown("**ESC特許分析システム** - 東京科学大学 齊藤滋規教授プロジェクト版")
 
 # デュアル接続初期化
@@ -35,7 +58,6 @@ def init_dual_connector():
     if DUAL_CONNECTOR_AVAILABLE:
         return DualPatentConnector()
     else:
-        st.error("❌ 接続モジュールが見つかりません")
         return None
 
 connector = init_dual_connector()
@@ -48,11 +70,8 @@ with st.sidebar:
     if connector:
         st.markdown("#### 📡 データソース接続状況")
         
-        # BigQuery接続状況
-        if hasattr(connector, 'bigquery_connected') and connector.bigquery_connected:
-            st.success("✅ BigQuery (Google Patents)")
-        else:
-            st.error("❌ BigQuery (Google Patents)")
+        # BigQuery接続状況（無効化中）
+        st.error("❌ BigQuery (一時的に無効化)")
         
         # PatentsView API接続状況
         if hasattr(connector, 'patents_api_connected') and connector.patents_api_connected:
@@ -68,6 +87,8 @@ with st.sidebar:
                     for source, status in results.items():
                         if "✅" in status:
                             st.success(f"{source}: {status}")
+                        elif "⚠️" in status:
+                            st.warning(f"{source}: {status}")
                         else:
                             st.error(f"{source}: {status}")
     else:
@@ -76,21 +97,14 @@ with st.sidebar:
     st.markdown("---")
     
     # データソース選択
-    if connector and hasattr(connector, 'bigquery_connected'):
-        available_sources = ["デモデータ"]
-        
-        if connector.bigquery_connected and hasattr(connector, 'patents_api_connected'):
-            available_sources = ["両方", "BigQuery", "PatentsView API", "デモデータ"]
-        elif connector.bigquery_connected:
-            available_sources = ["BigQuery", "デモデータ"]
-        elif hasattr(connector, 'patents_api_connected') and connector.patents_api_connected:
-            available_sources = ["PatentsView API", "デモデータ"]
+    if connector:
+        available_sources = ["PatentsView API", "デモデータ"]
         
         data_source = st.selectbox(
             "📊 データソース:",
             available_sources,
             index=0,
-            help="使用するデータソースを選択してください"
+            help="PatentsView API: 米国特許庁の公式データ"
         )
         
         use_real_data = (data_source != "デモデータ")
@@ -111,7 +125,7 @@ with st.sidebar:
     
     start_date = st.date_input(
         "開始日",
-        datetime(2015, 1, 1),
+        datetime(2018, 1, 1),
         min_value=datetime(2000, 1, 1),
         max_value=datetime.now(),
         help="特許検索の開始日を設定"
@@ -119,7 +133,7 @@ with st.sidebar:
     
     data_limit = st.slider(
         "取得データ件数", 
-        100, 2000, 1000,
+        50, 500, 200,
         help="取得する最大データ件数"
     )
     
@@ -127,11 +141,12 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 📋 システム情報")
     st.markdown(f"""
-    **バージョン:** v2.0.0 (デュアル接続)  
-    **データソース:** BigQuery + PatentsView API  
-    **最終更新:** 2024年7月  
+    **バージョン:** v2.0.0 完成版  
+    **データソース:** PatentsView API (USPTO)  
+    **最終更新:** 2025年7月22日  
     **開発:** FUSIONDRIVER INC  
     **プロジェクト:** KSPプロジェクト  
+    **GitHub:** [FusionPatentSearch](https://github.com/koji276/FusionPatentSearch)
     """)
 
 # データ取得
@@ -170,7 +185,9 @@ if df is not None and not df.empty:
             'TOTO': 'TOTO',
             'LAM RESEARCH': 'Lam Research',
             'ENTEGRIS': 'Entegris',
-            'SHINKO ELECTRIC': 'Shinko Electric'
+            'SHINKO ELECTRIC': 'Shinko Electric',
+            'ASML': 'ASML',
+            'KLA': 'KLA Corporation'
         }
         
         for key, value in company_mapping.items():
@@ -188,30 +205,36 @@ if df is not None and not df.empty:
         if use_real_data:
             if 'data_source' in df.columns:
                 source_counts = df['data_source'].value_counts()
-                st.success(f"📈 **実データ分析結果** - 取得元: {dict(source_counts)}")
+                st.markdown(f"""
+                <div class="success-box">
+                <strong>📈 実データ分析結果</strong><br>
+                データソース: {dict(source_counts)}<br>
+                取得日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                </div>
+                """, unsafe_allow_html=True)
             else:
-                st.success("📈 **実データ分析結果**")
+                st.success("📈 **実データ分析結果** - PatentsView API (USPTO)")
         else:
-            st.info("📊 **デモデータ分析結果**")
+            st.info("📊 **デモデータ分析結果** - 高品質サンプルデータ")
         
         # KPI表示
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("総特許数", f"{len(df):,}")
+            st.metric("総特許数", f"{len(df):,}", help="取得された特許の総数")
         
         with col2:
             unique_companies = df['company_normalized'].nunique()
-            st.metric("企業数", unique_companies)
+            st.metric("企業数", unique_companies, help="分析対象企業数")
         
         with col3:
             date_range = f"{df['filing_date'].min().year}-{df['filing_date'].max().year}"
-            st.metric("対象期間", date_range)
+            st.metric("対象期間", date_range, help="特許出願期間")
         
         with col4:
             year_span = df['filing_date'].max().year - df['filing_date'].min().year + 1
             avg_per_year = len(df) / year_span if year_span > 0 else len(df)
-            st.metric("年平均特許数", f"{avg_per_year:.1f}")
+            st.metric("年平均特許数", f"{avg_per_year:.1f}", help="年間平均出願数")
         
         st.markdown("---")
         
@@ -252,38 +275,50 @@ if df is not None and not df.empty:
             )
             st.plotly_chart(fig, use_container_width=True)
         
-        # データソース別分析（実データの場合）
-        if use_real_data and 'data_source' in df.columns:
-            col1, col2 = st.columns(2)
+        # 追加分析
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📊 企業別市場シェア")
+            company_counts = df['company_normalized'].value_counts().head(8)
             
-            with col1:
-                st.subheader("📊 データソース別分布")
-                source_counts = df['data_source'].value_counts()
-                
-                fig = px.pie(
-                    values=source_counts.values, 
-                    names=source_counts.index,
-                    title='データソース別特許数分布'
-                )
-                st.plotly_chart(fig, use_container_width=True)
+            fig = px.pie(
+                values=company_counts.values, 
+                names=company_counts.index,
+                title='企業別特許シェア分布'
+            )
+            fig.update_traces(textposition='inside', textinfo='percent+label')
+            st.plotly_chart(fig, use_container_width=True)
+        
+        with col2:
+            st.subheader("📅 年別特許出願動向")
             
-            with col2:
-                st.subheader("🌍 国別分布")
-                country_counts = df['country_code'].value_counts()
-                
-                fig = px.bar(
-                    x=country_counts.index,
-                    y=country_counts.values,
-                    title='特許出願国別分布',
-                    color=country_counts.values,
-                    color_continuous_scale='blues'
-                )
-                fig.update_layout(
-                    xaxis_title="国コード", 
-                    yaxis_title="特許数",
-                    showlegend=False
-                )
-                st.plotly_chart(fig, use_container_width=True)
+            # 移動平均を追加
+            yearly_counts_ma = yearly_counts.copy()
+            yearly_counts_ma['moving_avg'] = yearly_counts_ma['count'].rolling(window=3, center=True).mean()
+            
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(
+                x=yearly_counts_ma['filing_year'], 
+                y=yearly_counts_ma['count'],
+                mode='lines+markers',
+                name='実際の出願数',
+                line=dict(color='#1f77b4', width=2)
+            ))
+            fig.add_trace(go.Scatter(
+                x=yearly_counts_ma['filing_year'], 
+                y=yearly_counts_ma['moving_avg'],
+                mode='lines',
+                name='3年移動平均',
+                line=dict(color='#ff7f0e', width=3, dash='dash')
+            ))
+            fig.update_layout(
+                title='特許出願トレンド分析',
+                xaxis_title='年',
+                yaxis_title='特許数',
+                hovermode='x unified'
+            )
+            st.plotly_chart(fig, use_container_width=True)
     
     elif analysis_type == "企業別詳細分析":
         st.header("🏢 企業別詳細分析")
@@ -316,8 +351,9 @@ if df is not None and not df.empty:
                 st.metric("年平均特許数", f"{avg_per_year:.1f}")
             
             with col4:
-                country_diversity = company_data['country_code'].nunique()
-                st.metric("出願国数", country_diversity)
+                # 全体に占める割合
+                market_share = (len(company_data) / len(df)) * 100
+                st.metric("市場シェア", f"{market_share:.1f}%")
             
             # 企業の年次推移
             st.subheader(f"📊 {selected_company} の年次推移")
@@ -344,12 +380,43 @@ if df is not None and not df.empty:
                     with col1:
                         st.write(f"**タイトル:** {patent['title']}")
                         if 'abstract' in patent and patent['abstract']:
-                            st.write(f"**概要:** {patent['abstract'][:300]}...")
+                            st.write(f"**概要:** {patent['abstract'][:400]}...")
                     with col2:
                         st.write(f"**国:** {patent['country_code']}")
                         st.write(f"**年:** {patent['filing_year']}")
                         if 'data_source' in patent:
                             st.write(f"**データソース:** {patent['data_source']}")
+        else:
+            st.warning("選択された企業のデータがありません。")
+    
+    # 技術トレンド分析
+    elif analysis_type == "技術トレンド分析":
+        st.header("🔬 技術トレンド分析")
+        
+        # キーワード分析
+        st.subheader("🔍 技術キーワード分析")
+        
+        # タイトルからキーワード抽出
+        all_titles = ' '.join(df['title'].astype(str)).upper()
+        
+        tech_keywords = {
+            'ELECTROSTATIC': all_titles.count('ELECTROSTATIC'),
+            'CHUCK': all_titles.count('CHUCK'),
+            'SEMICONDUCTOR': all_titles.count('SEMICONDUCTOR'),
+            'WAFER': all_titles.count('WAFER'),
+            'TEMPERATURE': all_titles.count('TEMPERATURE'),
+            'CONTROL': all_titles.count('CONTROL'),
+            'CURVED': all_titles.count('CURVED'),
+            'FLEXIBLE': all_titles.count('FLEXIBLE')
+        }
+        
+        keyword_df = pd.DataFrame(list(tech_keywords.items()), columns=['Keyword', 'Frequency'])
+        keyword_df = keyword_df[keyword_df['Frequency'] > 0].sort_values('Frequency', ascending=False)
+        
+        if not keyword_df.empty:
+            fig = px.bar(keyword_df, x='Frequency', y='Keyword', orientation='h',
+                        title='技術キーワード出現頻度')
+            st.plotly_chart(fig, use_container_width=True)
     
     # 生データ表示
     with st.expander("📋 生データを表示", expanded=False):
@@ -360,28 +427,57 @@ if df is not None and not df.empty:
         if 'data_source' in df.columns:
             display_columns.append('data_source')
         
-        st.dataframe(df[display_columns].head(100), use_container_width=True)
+        # フィルタリング機能
+        col1, col2 = st.columns(2)
+        with col1:
+            year_filter = st.multiselect(
+                "年でフィルタ",
+                options=sorted(df['filing_year'].unique()),
+                default=[]
+            )
+        with col2:
+            company_filter = st.multiselect(
+                "企業でフィルタ",
+                options=sorted(df['company_normalized'].unique()),
+                default=[]
+            )
+        
+        # フィルタ適用
+        filtered_df = df.copy()
+        if year_filter:
+            filtered_df = filtered_df[filtered_df['filing_year'].isin(year_filter)]
+        if company_filter:
+            filtered_df = filtered_df[filtered_df['company_normalized'].isin(company_filter)]
+        
+        st.dataframe(filtered_df[display_columns].head(100), use_container_width=True)
         
         # CSV ダウンロード
-        csv = df.to_csv(index=False)
+        csv = filtered_df.to_csv(index=False)
         st.download_button(
             label="📥 CSVダウンロード",
             data=csv,
             file_name=f"esc_patents_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
             mime="text/csv",
-            help="全データをCSVファイルとしてダウンロード"
+            help="フィルタリングされたデータをCSVファイルとしてダウンロード"
         )
 
 else:
     st.error("❌ データの読み込みに失敗しました。")
+    st.info("💡 以下の点を確認してください:")
+    st.markdown("""
+    - dual_patent_connector.py が正しく配置されているか
+    - PatentsView APIが正常に動作しているか
+    - インターネット接続が安定しているか
+    """)
 
 # フッター
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.9rem;'>
-<strong>FusionPatentSearch v2.0</strong> - デュアル特許データ接続システム<br>
+<strong>FusionPatentSearch v2.0 完成版</strong> - ESC特許分析システム<br>
 開発: FUSIONDRIVER INC | 学術連携: 東京科学大学 齊藤滋規教授研究室<br>
-データソース: Google Patents BigQuery + USPTO PatentsView API<br>
-最終更新: 2025年7月22日 | KSPプロジェクト
+データソース: USPTO PatentsView API | GitHub: FusionPatentSearch<br>
+最終更新: 2025年7月22日 | KSPプロジェクト<br>
+<em>5万円のイノベーションリサーチ社サービスの完全代替システム</em>
 </div>
 """, unsafe_allow_html=True)
