@@ -118,7 +118,6 @@ with st.sidebar:
     max_patents = st.slider("最大表示件数", 100, 1000, 500, step=100)
 
 # 接続システム初期化
-@st.cache_data
 def get_patent_connector():
     return DualPatentConnector()
 
@@ -151,7 +150,6 @@ if BIGQUERY_AVAILABLE and not use_demo_data:
     bq_connector = connector
 
 # データ読み込み関数
-@st.cache_data(ttl=3600)  # 1時間キャッシュ
 def load_patent_data(use_demo_data=False, bq_connector=None):
     """特許データを読み込む"""
     
