@@ -888,7 +888,15 @@ def main():
             )
             
             # 収集予定の企業表示
-            st.markdown("#### 🏢 収集対象企業")
+            st.markdown(f"#### 🏢 収集対象企業 ({num_companies}社選択)")
+            
+            # デバッグ情報（開発時のみ表示）
+            if st.checkbox("🔧 デバッグ情報を表示", value=False):
+                st.write(f"選択モード: {collection_mode}")
+                st.write(f"企業数設定: {num_companies}")
+                st.write(f"利用可能企業数: {len(companies_preview)}")
+                st.write(f"選択された企業: {selected_companies}")
+            
             companies_preview = [
                 "Applied Materials", "Tokyo Electron", "Kyocera", 
                 "Shinko Electric", "TOTO", "Sumitomo Osaka Cement",
@@ -899,18 +907,35 @@ def main():
             mode_companies = {
                 "標準収集 (50件)": 5,
                 "拡張収集 (100件)": 8,
-                "大量収集 (200件)": 13,
-                "全件 (60+実在特許)": 13
+                "大量収集 (200件)": 13,  # 全13社
+                "全件 (60+実在特許)": 13   # 全13社
             }
             
             num_companies = mode_companies[collection_mode]
             selected_companies = companies_preview[:num_companies]
             
-            for i in range(0, len(selected_companies), 3):
-                cols = st.columns(3)
-                for j, company in enumerate(selected_companies[i:i+3]):
-                    with cols[j]:
-                        st.markdown(f"✅ **{company}**")
+            # Creative Technologyが含まれているか確認
+            if "Creative Technology" not in selected_companies and collection_mode in ["大量収集 (200件)", "全件 (60+実在特許)"]:
+                st.warning("⚠️ Creative Technology が選択されていません。企業リストを確認中...")
+                # 強制的に追加
+                if len(selected_companies) < len(companies_preview):
+                    selected_companies = companies_preview.copy()
+            
+            for i in range(0, len(selected_companies), 4):  # 4列レイアウトに変更
+                cols = st.columns(4)
+                for j, company in enumerate(selected_companies[i:i+4]):
+                    if i + j < len(selected_companies):  # インデックス範囲チェック
+                        with cols[j]:
+                            # 会社名を短縮表示
+                            display_name = company
+                            if len(company) > 15:
+                                if "Technology" in company:
+                                    display_name = company.replace("Technology", "Tech")
+                                elif "Engineering" in company:
+                                    display_name = company.replace("Engineering", "Eng")
+                                elif "Materials" in company:
+                                    display_name = company.replace("Materials", "Mat")
+                            st.markdown(f"✅ **{display_name}**")
         
         with col2:
             st.subheader("📈 収集進捗予測")
