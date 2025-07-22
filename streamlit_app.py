@@ -792,12 +792,13 @@ def main():
         
         st.markdown("""
         ### 🎯 システム特徴
-        - ✅ 実在特許265+件対応
-        - ✅ 企業別均等収集（13社）
+        - ✅ 実在特許425+件対応
+        - ✅ 企業別均等収集（17社）
         - ✅ Google Drive分割保存
         - ✅ スケーラブル設計
         - ✅ リアルタイム分析
         - ✅ 高度可視化
+        - ✅ M&A履歴追跡
         """)
         
         # システム状態表示
@@ -888,54 +889,93 @@ def main():
             )
             
             # 収集予定の企業表示
-            st.markdown(f"#### 🏢 収集対象企業 ({num_companies}社選択)")
-            
-            # デバッグ情報（開発時のみ表示）
-            if st.checkbox("🔧 デバッグ情報を表示", value=False):
-                st.write(f"選択モード: {collection_mode}")
-                st.write(f"企業数設定: {num_companies}")
-                st.write(f"利用可能企業数: {len(companies_preview)}")
-                st.write(f"選択された企業: {selected_companies}")
+            st.markdown(f"#### 🏢 収集対象企業")
             
             companies_preview = [
                 "Applied Materials", "Tokyo Electron", "Kyocera", 
                 "Shinko Electric", "TOTO", "Sumitomo Osaka Cement",
                 "NGK Insulators", "NTK Ceratec", "Lam Research",
-                "Entegris", "MiCo", "SEMCO Engineering", "Creative Technology"
+                "Entegris", "MiCo", "SEMCO Engineering", 
+                "Creative Technology", "Tsukuba Seiko", "FM Industries",
+                "Calitech", "Beijing U-Precision"
             ]
             
             mode_companies = {
-                "標準収集 (50件)": 5,
-                "拡張収集 (100件)": 8,
-                "大量収集 (200件)": 13,  # 全13社
-                "全件 (60+実在特許)": 13   # 全13社
+                "標準収集 (50件)": 6,
+                "拡張収集 (100件)": 10,
+                "大量収集 (200件)": 17,  # 全17社
+                "全件 (60+実在特許)": 17   # 全17社
             }
             
             num_companies = mode_companies[collection_mode]
             selected_companies = companies_preview[:num_companies]
             
-            # Creative Technologyが含まれているか確認
-            if "Creative Technology" not in selected_companies and collection_mode in ["大量収集 (200件)", "全件 (60+実在特許)"]:
-                st.warning("⚠️ Creative Technology が選択されていません。企業リストを確認中...")
-                # 強制的に追加
-                if len(selected_companies) < len(companies_preview):
-                    selected_companies = companies_preview.copy()
+            # 企業表示（5行 x 4列 = 20スロット）
+            st.markdown("**対象企業一覧:**")
             
-            for i in range(0, len(selected_companies), 4):  # 4列レイアウトに変更
-                cols = st.columns(4)
-                for j, company in enumerate(selected_companies[i:i+4]):
-                    if i + j < len(selected_companies):  # インデックス範囲チェック
-                        with cols[j]:
-                            # 会社名を短縮表示
-                            display_name = company
-                            if len(company) > 15:
-                                if "Technology" in company:
-                                    display_name = company.replace("Technology", "Tech")
-                                elif "Engineering" in company:
-                                    display_name = company.replace("Engineering", "Eng")
-                                elif "Materials" in company:
-                                    display_name = company.replace("Materials", "Mat")
-                            st.markdown(f"✅ **{display_name}**")
+            # 1行目 - 主要日本企業
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown("✅ **Tokyo Electron** 🇯🇵")
+            with col2:
+                st.markdown("✅ **Kyocera** 🇯🇵")  
+            with col3:
+                st.markdown("✅ **Shinko Electric** 🇯🇵")
+            with col4:
+                st.markdown("✅ **TOTO** 🇯🇵")
+            
+            # 2行目 - 日本企業続き
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown("✅ **NGK Insulators** 🇯🇵")
+            with col2:
+                st.markdown("✅ **NTK Ceratec** 🇯🇵")
+            with col3:
+                st.markdown("✅ **Creative Technology** 🇯🇵")
+            with col4:
+                st.markdown("✅ **Tsukuba Seiko** 🇯🇵")
+            
+            # 3行目 - 日本セメント + 米国企業
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown("✅ **Sumitomo Osaka Cement** 🇯🇵")
+            with col2:
+                st.markdown("✅ **Applied Materials** 🇺🇸")
+            with col3:
+                st.markdown("✅ **Lam Research** 🇺🇸")
+            with col4:
+                st.markdown("✅ **Entegris** 🇺🇸")
+            
+            # 4行目 - 米国M&A + 韓国・フランス
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown("✅ **FM Industries** 🇺🇸→🇯🇵")
+            with col2:
+                st.markdown("✅ **MiCo** 🇰🇷")
+            with col3:
+                st.markdown("✅ **SEMCO Engineering** 🇫🇷")
+            with col4:
+                st.markdown("✅ **Calitech** 🇹🇼")
+            
+            # 5行目 - アジア企業
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.markdown("✅ **Beijing U-Precision** 🇨🇳")
+            with col2:
+                st.markdown("")  # 空白
+            with col3:
+                st.markdown("")  # 空白  
+            with col4:
+                st.markdown("")  # 空白
+                
+            # M&A情報の補足説明
+            st.markdown("""
+            <div style="background: #e7f3ff; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                <h5>🏢 M&A情報</h5>
+                <p><strong>FM Industries (米国)</strong> → 2002年に日本ガイシが買収</p>
+                <p>日本ガイシの海外展開戦略の一環として、米国ESC技術を獲得</p>
+            </div>
+            """, unsafe_allow_html=True)
         
         with col2:
             st.subheader("📈 収集進捗予測")
