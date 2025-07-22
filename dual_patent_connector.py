@@ -51,11 +51,12 @@ class DualPatentConnector:
             self.bigquery_connected = False
     
     def search_patents_bigquery(self, start_date='2015-01-01', limit=500):
-        """BigQueryから特許データを取得"""
+        """BigQueryから特許データを取得（修正版）"""
         if not self.bigquery_connected:
             return pd.DataFrame()
         
         try:
+            # 修正されたクエリ - データ型エラーを回避
             query = f"""
             SELECT 
                 publication_number,
@@ -66,13 +67,19 @@ class DualPatentConnector:
                 EXTRACT(YEAR FROM filing_date) as filing_year
             FROM `patents-public-data.patents.publications` 
             WHERE 
-                filing_date >= '{start_date}'
-                AND filing_date <= '2024-07-22'
+                filing_date >= DATE('{start_date}')
+                AND filing_date <= DATE('2024-07-22')
                 AND assignee_harmonized IS NOT NULL
                 AND country_code IN ('US', 'JP', 'EP', 'WO')
                 AND (
-                    REGEXP_CONTAINS(UPPER(assignee_harmonized), r'APPLIED MATERIALS|TOKYO ELECTRON|KYOCERA|NGK INSULATORS|TOTO|LAM RESEARCH|ENTEGRIS|SHINKO ELECTRIC')
-                    OR REGEXP_CONTAINS(UPPER(title_localized), r'ELECTROSTATIC CHUCK|ESC|CURVED CHUCK|FLEXIBLE CHUCK')
+                    UPPER(assignee_harmonized) LIKE '%APPLIED MATERIALS%'
+                    OR UPPER(assignee_harmonized) LIKE '%TOKYO ELECTRON%'
+                    OR UPPER(assignee_harmonized) LIKE '%KYOCERA%'
+                    OR UPPER(assignee_harmonized) LIKE '%NGK INSULATORS%'
+                    OR UPPER(assignee_harmonized) LIKE '%TOTO%'
+                    OR UPPER(assignee_harmonized) LIKE '%LAM RESEARCH%'
+                    OR UPPER(title_localized) LIKE '%ELECTROSTATIC CHUCK%'
+                    OR UPPER(title_localized) LIKE '%ESC%'
                 )
             ORDER BY filing_date DESC
             LIMIT {limit}
@@ -89,7 +96,7 @@ class DualPatentConnector:
             df = results.to_dataframe()
             
             if len(df) > 0:
-                df['abstract'] = 'Patent data from Google Patents BigQuery dataset - comprehensive global patent information.'
+                df['abstract'] = 'Patent data from Google Patents BigQuery dataset.'
                 df['data_source'] = 'BigQuery (Google Patents)'
                 st.success(f"✅ BigQuery: {len(df)}件取得")
                 return df
