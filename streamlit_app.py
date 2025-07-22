@@ -156,7 +156,7 @@ def load_patent_data(use_demo_data=False, bq_connector=None):
     """特許データを読み込む"""
     
     if use_demo_data or not BIGQUERY_AVAILABLE or bq_connector is None:
-        # === 修正：デモデータ生成 ===
+        # デモデータ生成
         connector = DualPatentConnector()
         return connector.get_demo_data()
     
