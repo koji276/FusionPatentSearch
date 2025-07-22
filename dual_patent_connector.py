@@ -19,321 +19,215 @@ class DualPatentConnector:
         self.bigquery_connected = False
         self.patents_api_connected = True  # PatentsView APIは常に利用可能
         
-        # BigQuery接続を試行
-        if BIGQUERY_AVAILABLE:
-            self.setup_bigquery()
-        
         # PatentsView API設定
         self.patents_api_url = "https://api.patentsview.org/patents/query"
         
+        # BigQuery接続を試行（一時的に無効化）
+        # if BIGQUERY_AVAILABLE:
+        #     self.setup_bigquery()
+        
     def setup_bigquery(self):
-        """BigQuery接続設定"""
+        """BigQuery接続設定（一時的に無効化）"""
         try:
-            if 'google_cloud' in st.secrets:
-                credentials_info = dict(st.secrets["google_cloud"])
-                credentials = service_account.Credentials.from_service_account_info(
-                    credentials_info,
-                    scopes=["https://www.googleapis.com/auth/bigquery"]
-                )
-                project_id = credentials_info.get('project_id', 'fusionpatentsearch')
-                self.bigquery_client = bigquery.Client(credentials=credentials, project=project_id)
-                
-                # 接続テスト
-                test_query = "SELECT 1 as test"
-                query_job = self.bigquery_client.query(test_query)
-                list(query_job.result())
-                
-                self.bigquery_connected = True
-                st.success("✅ BigQuery (Google Patents) 接続成功")
-                
+            st.info("⚠️ BigQuery は一時的に無効化されています")
+            self.bigquery_connected = False
         except Exception as e:
-            st.warning(f"⚠️ BigQuery接続失敗: {str(e)}")
             self.bigquery_connected = False
     
-def search_patents_bigquery(self, start_date='2015-01-01', limit=500):
-    """BigQueryから特許データを取得（超シンプル版）"""
-    if not self.bigquery_connected:
-        return pd.DataFrame()
-    
-    try:
-        # 最もシンプルなクエリ
-        query = """
-        SELECT 
-            publication_number,
-            assignee_harmonized as assignee,
-            filing_date,
-            country_code,
-            title_localized as title,
-            EXTRACT(YEAR FROM filing_date) as filing_year
-        FROM `patents-public-data.patents.publications` 
-        WHERE 
-            assignee_harmonized = 'Applied Materials, Inc.'
-            AND filing_date >= '2020-01-01'
-            AND country_code = 'US'
-        ORDER BY filing_date DESC
-        LIMIT 100
-        """
-        
-        st.info("🔍 BigQuery (シンプルクエリ) で検索中...")
-        
-        job_config = bigquery.QueryJobConfig()
-        job_config.maximum_bytes_billed = 100000000  # 100MB制限
-        
-        query_job = self.bigquery_client.query(query, job_config=job_config)
-        results = query_job.result(timeout=15)
-        
-        df = results.to_dataframe()
-        
-        if len(df) > 0:
-            df['abstract'] = 'Patent data from Google Patents BigQuery dataset.'
-            df['data_source'] = 'BigQuery (Google Patents)'
-            st.success(f"✅ BigQuery: {len(df)}件取得")
-            return df
-        else:
-            st.info("ℹ️ BigQuery: Applied Materials社のデータなし")
-            return pd.DataFrame()
-            
-    except Exception as e:
-        st.warning(f"⚠️ BigQuery接続中: {str(e)}")
-        return pd.DataFrame()
-
-def search_patents_api(self, start_date='2015-01-01', limit=500):
-    """PatentsView APIから特許データを取得（修正版）"""
-    try:
-        st.info("🔍 PatentsView API で検索中...")
-        
-        # シンプルなクエリ
-        query = {
-            "q": {
-                "assignee_organization": "Applied Materials"
-            },
-            "f": [
-                "patent_number", "patent_title", "patent_date",
-                "assignee_organization"
-            ],
-            "s": [{"patent_date": "desc"}],
-            "o": {"per_page": 50}
-        }
-        
-        response = requests.post(self.patents_api_url, json=query, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            patents = data.get('patents', [])
-            
-            if patents:
-                all_patents = []
-                for patent in patents:
-                    assignees = patent.get('assignees', [])
-                    assignee_name = assignees[0].get('assignee_organization', 'Applied Materials') if assignees else 'Applied Materials'
-                    
-                    all_patents.append({
-                        'publication_number': patent.get('patent_number', ''),
-                        'assignee': assignee_name,
-                        'filing_date': patent.get('patent_date', ''),
-                        'country_code': 'US',
-                        'title': patent.get('patent_title', ''),
-                        'abstract': 'Patent data from USPTO PatentsView API.',
-                        'data_source': 'PatentsView API (USPTO)'
-                    })
-                
-                df = pd.DataFrame(all_patents)
-                df['filing_date'] = pd.to_datetime(df['filing_date'], errors='coerce')
-                df = df.dropna(subset=['filing_date'])
-                df['filing_year'] = df['filing_date'].dt.year
-                
-                st.success(f"✅ PatentsView API: {len(df)}件取得")
-                return df
-            else:
-                st.info("ℹ️ PatentsView API: データなし")
-                return pd.DataFrame()
-        else:
-            st.warning(f"⚠️ PatentsView API: エラー {response.status_code}")
-            return pd.DataFrame()
-            
-    except Exception as e:
-        st.warning(f"⚠️ PatentsView API接続中: {str(e)}")
+    def search_patents_bigquery(self, start_date='2015-01-01', limit=500):
+        """BigQueryから特許データを取得（無効化中）"""
         return pd.DataFrame()
     
     def search_patents_api(self, start_date='2015-01-01', limit=500):
-        """PatentsView APIから特許データを取得"""
+        """PatentsView APIから特許データを取得（完成版）"""
         try:
-            target_companies = [
-                "Applied Materials", "Tokyo Electron", "Kyocera Corporation",
-                "NGK Insulators", "Lam Research", "Entegris",
-                "TOTO", "Shinko Electric Industries"
+            st.info("🔍 PatentsView API (USPTO) で検索中...")
+            
+            # 基本的なテストクエリ
+            test_query = {
+                "q": {"assignee_organization": "Applied Materials"},
+                "f": ["patent_number"],
+                "o": {"per_page": 1}
+            }
+            
+            # 接続テスト
+            test_response = requests.post(self.patents_api_url, json=test_query, timeout=5)
+            if test_response.status_code != 200:
+                st.error(f"❌ PatentsView API接続失敗: HTTP {test_response.status_code}")
+                return pd.DataFrame()
+            
+            # 対象企業リスト
+            companies = [
+                "Applied Materials", "Tokyo Electron", "Lam Research", 
+                "ASML", "KLA Corporation", "Entegris", "Kyocera"
             ]
             
             all_patents = []
-            st.info("🔍 PatentsView API (USPTO) で検索中...")
             
-            for company in target_companies[:4]:  # API負荷軽減のため4社に限定
+            for company in companies:
                 try:
-                    # 複数の検索パターンを試行
-                    search_patterns = [
-                        {"assignee_organization": company},
-                        {"assignee_organization": company.split()[0]}  # 会社名の最初の単語
-                    ]
+                    # ESC関連キーワードを含むクエリ
+                    query = {
+                        "q": {
+                            "_and": [
+                                {"assignee_organization": company},
+                                {"_gte": {"patent_date": start_date}},
+                                {"_or": [
+                                    {"patent_title": "chuck"},
+                                    {"patent_title": "electrostatic"},
+                                    {"patent_title": "semiconductor"},
+                                    {"patent_title": "wafer"},
+                                    {"patent_abstract": "electrostatic chuck"}
+                                ]}
+                            ]
+                        },
+                        "f": [
+                            "patent_number", "patent_title", "patent_date", 
+                            "assignee_organization", "patent_abstract"
+                        ],
+                        "s": [{"patent_date": "desc"}],
+                        "o": {"per_page": 30}
+                    }
                     
-                    for pattern in search_patterns:
-                        query = {
-                            "q": {
-                                "_and": [
-                                    pattern,
-                                    {"_gte": {"patent_date": start_date}},
-                                    {"_or": [
-                                        {"patent_title": "electrostatic chuck"},
-                                        {"patent_title": "chuck"},
-                                        {"patent_title": "semiconductor"},
-                                        {"patent_abstract": "electrostatic"}
-                                    ]}
-                                ]
-                            },
-                            "f": [
-                                "patent_number", "patent_title", "patent_date",
-                                "assignee_organization", "patent_abstract"
-                            ],
-                            "s": [{"patent_date": "desc"}],
-                            "o": {"per_page": 50}
-                        }
+                    response = requests.post(self.patents_api_url, json=query, timeout=15)
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        patents = data.get('patents', [])
                         
-                        response = requests.post(self.patents_api_url, json=query, timeout=15)
+                        st.info(f"📊 {company}: {len(patents)}件の関連特許を発見")
                         
-                        if response.status_code == 200:
-                            data = response.json()
-                            patents = data.get('patents', [])
+                        for patent in patents:
+                            assignees = patent.get('assignees', [])
+                            assignee_name = assignees[0].get('assignee_organization', company) if assignees else company
                             
-                            for patent in patents:
-                                assignees = patent.get('assignees', [])
-                                assignee_name = assignees[0].get('assignee_organization', company) if assignees else company
-                                
-                                all_patents.append({
-                                    'publication_number': patent.get('patent_number', ''),
-                                    'assignee': assignee_name,
-                                    'filing_date': patent.get('patent_date', ''),
-                                    'country_code': 'US',
-                                    'title': patent.get('patent_title', ''),
-                                    'abstract': (patent.get('patent_abstract', '') or '')[:300] + '...',
-                                    'data_source': 'PatentsView API (USPTO)'
-                                })
+                            patent_title = patent.get('patent_title', '')
+                            patent_abstract = patent.get('patent_abstract', '') or 'No abstract available'
                             
-                            if patents:
-                                st.success(f"✅ PatentsView: {company} - {len(patents)}件")
-                                break  # 成功したらループを抜ける
-                        
-                        time.sleep(0.3)  # API制限対策
-                        
+                            all_patents.append({
+                                'publication_number': patent.get('patent_number', ''),
+                                'assignee': assignee_name,
+                                'filing_date': patent.get('patent_date', ''),
+                                'country_code': 'US',
+                                'title': patent_title[:200] + '...' if len(patent_title) > 200 else patent_title,
+                                'abstract': patent_abstract[:300] + '...' if len(patent_abstract) > 300 else patent_abstract,
+                                'data_source': 'PatentsView API (USPTO)'
+                            })
+                    else:
+                        st.warning(f"⚠️ {company}: API エラー {response.status_code}")
+                    
+                    # API制限対策
+                    time.sleep(0.8)
+                    
                 except Exception as e:
                     st.warning(f"⚠️ {company}: {str(e)}")
                     continue
             
             if all_patents:
                 df = pd.DataFrame(all_patents)
+                
+                # データクリーニング
                 df['filing_date'] = pd.to_datetime(df['filing_date'], errors='coerce')
                 df = df.dropna(subset=['filing_date'])
                 df['filing_year'] = df['filing_date'].dt.year
+                
+                # 重複除去
                 df = df.drop_duplicates(subset=['publication_number'])
                 
                 # 日付フィルタ
                 start_dt = pd.to_datetime(start_date)
                 df = df[df['filing_date'] >= start_dt]
+                
+                # 件数制限
                 df = df.head(limit)
                 
-                st.success(f"✅ PatentsView API: 合計 {len(df)}件取得")
+                st.success(f"✅ PatentsView API: 合計 {len(df)}件の実特許データを取得!")
                 return df
             else:
-                st.warning("⚠️ PatentsView API: データなし")
+                st.warning("⚠️ PatentsView API: 検索条件に一致するデータがありませんでした")
                 return pd.DataFrame()
                 
         except Exception as e:
             st.error(f"❌ PatentsView API エラー: {str(e)}")
             return pd.DataFrame()
     
-    def search_esc_patents(self, start_date='2015-01-01', limit=1000, use_sample=False, data_source="両方"):
-        """統合特許検索"""
-        if use_sample:
+    def search_esc_patents(self, start_date='2015-01-01', limit=1000, use_sample=False, data_source="PatentsView API"):
+        """統合特許検索（完成版）"""
+        if use_sample or data_source == "デモデータ":
             return self.get_demo_data()
         
-        all_data = []
+        # PatentsView APIを使用
+        api_data = self.search_patents_api(start_date, limit)
         
-        # データソース選択に応じて取得
-        if data_source in ["両方", "BigQuery"] and self.bigquery_connected:
-            bigquery_data = self.search_patents_bigquery(start_date, limit//2)
-            if not bigquery_data.empty:
-                all_data.append(bigquery_data)
-        
-        if data_source in ["両方", "PatentsView API"]:
-            api_data = self.search_patents_api(start_date, limit//2)
-            if not api_data.empty:
-                all_data.append(api_data)
-        
-        # データ統合
-        if all_data:
-            combined_df = pd.concat(all_data, ignore_index=True)
-            
-            # 重複除去（特許番号ベース）
-            combined_df = combined_df.drop_duplicates(subset=['publication_number'])
-            
-            # データソース統計
-            source_counts = combined_df['data_source'].value_counts()
-            st.info(f"📊 データソース別取得件数: {dict(source_counts)}")
-            
-            # 件数制限
-            combined_df = combined_df.head(limit)
-            
-            st.success(f"🎉 **実データ取得成功！** 合計 {len(combined_df)}件の特許データ")
-            return combined_df
-        
+        if not api_data.empty:
+            st.success(f"🎉 **実データ取得成功！** {len(api_data)}件の米国特許データ")
+            return api_data
         else:
-            st.warning("⚠️ 両方のAPIからデータを取得できませんでした。デモデータを使用します。")
+            st.warning("⚠️ 実データが取得できませんでした。デモデータを使用します。")
             return self.get_demo_data()
     
     def get_demo_data(self):
-        """改良されたデモデータ"""
+        """高品質デモデータ生成"""
         companies = [
             'Applied Materials Inc', 'Tokyo Electron Limited', 'Kyocera Corporation',
             'NGK Insulators Ltd', 'TOTO Ltd', 'Lam Research Corporation',
-            'Entegris Inc', 'Shinko Electric Industries'
+            'Entegris Inc', 'Shinko Electric Industries', 'ASML Holding NV',
+            'KLA Corporation'
+        ]
+        
+        # 実際のESC関連特許タイトルパターン
+        title_patterns = [
+            "Electrostatic chuck with curved surface for semiconductor processing",
+            "Variable curvature electrostatic chuck system",
+            "Conformal electrostatic chuck for wafer processing",
+            "Multi-zone electrostatic chuck with temperature control",
+            "Flexible electrostatic chuck for curved substrates",
+            "Electrostatic chuck with improved particle performance",
+            "Temperature controlled electrostatic chuck assembly",
+            "Electrostatic chuck with enhanced wafer holding",
+            "Curved electrostatic chuck for semiconductor manufacturing",
+            "Advanced electrostatic chuck system with monitoring"
         ]
         
         demo_data = []
         base_date = datetime(2015, 1, 1)
         
-        for i in range(300):
+        # 年次トレンドを反映
+        year_weights = {
+            2015: 0.5, 2016: 0.6, 2017: 0.7, 2018: 0.9, 2019: 1.0,
+            2020: 0.8, 2021: 0.7, 2022: 0.6, 2023: 0.7, 2024: 0.8
+        }
+        
+        for i in range(400):
+            # 重み付けによる年の選択
+            year = random.choices(list(year_weights.keys()), weights=list(year_weights.values()))[0]
+            month = random.randint(1, 12)
+            day = random.randint(1, 28)
+            filing_date = datetime(year, month, day)
+            
             company = random.choice(companies)
-            days_offset = random.randint(0, (datetime.now() - base_date).days)
-            filing_date = base_date + timedelta(days=days_offset)
             
             demo_data.append({
-                'publication_number': f"US{random.randint(8000000, 9999999)}",
+                'publication_number': f"US{random.randint(8000000, 11000000)}",
                 'assignee': company,
                 'filing_date': filing_date.date(),
-                'country_code': random.choice(['US', 'JP', 'EP']),
-                'title': f'Advanced Electrostatic Chuck Technology for Semiconductor Processing - Patent {i+1}',
-                'abstract': f'Enhanced electrostatic chuck system with improved wafer holding capabilities. Patent {i+1} by {company}.',
+                'country_code': 'US',
+                'title': f"{random.choice(title_patterns)} - Patent {i+1}",
+                'abstract': f"This invention relates to advanced electrostatic chuck technology for semiconductor manufacturing. The disclosed system provides improved wafer holding capabilities with enhanced temperature control and reduced particle generation. Patent {i+1} demonstrates innovative approaches to curved surface electrostatic chucking technology developed by {company}.",
                 'filing_year': filing_date.year,
                 'data_source': 'Demo Data'
             })
         
         df = pd.DataFrame(demo_data)
-        st.info(f"📊 デモデータ: {len(df)}件")
+        st.info(f"📊 高品質デモデータ: {len(df)}件")
         return df
     
     def test_connections(self):
-        """両方の接続をテスト"""
+        """接続テスト（完成版）"""
         results = {}
         
-        # BigQuery テスト
-        if self.bigquery_connected:
-            try:
-                query = "SELECT COUNT(*) as total FROM `patents-public-data.patents.publications` LIMIT 1"
-                result = self.bigquery_client.query(query).result()
-                for row in result:
-                    results['BigQuery'] = f"✅ 接続成功 - 総特許数: {row.total:,}件"
-            except Exception as e:
-                results['BigQuery'] = f"❌ 接続失敗: {str(e)}"
-        else:
-            results['BigQuery'] = "❌ 未接続"
+        # BigQuery テスト（無効化中）
+        results['BigQuery'] = "⚠️ 一時的に無効化中"
         
         # PatentsView API テスト
         try:
@@ -346,9 +240,9 @@ def search_patents_api(self, start_date='2015-01-01', limit=500):
             if response.status_code == 200:
                 data = response.json()
                 count = data.get('count', 0)
-                results['PatentsView API'] = f"✅ 接続成功 - Applied Materials: {count:,}件"
+                results['PatentsView API'] = f"✅ 接続成功 - Applied Materials: {count:,}件の特許"
             else:
-                results['PatentsView API'] = f"❌ API エラー: {response.status_code}"
+                results['PatentsView API'] = f"❌ API エラー: HTTP {response.status_code}"
         except Exception as e:
             results['PatentsView API'] = f"❌ 接続失敗: {str(e)}"
         
