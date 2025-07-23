@@ -75,13 +75,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def load_patent_data_from_cloud():
-    """クラウドから効率的にデータロード"""
+    """クラウドから効率的にデータロード（メモリ内対応）"""
     try:
         from patent_cloud_collector import CloudPatentDataCollector
         
         collector = CloudPatentDataCollector()
-        df = collector.load_all_patent_data()
         
+        # まずGoogle Driveから読み込みを試行
+        try:
+            df = collector.load_all_patent_data()
+            if not df.empty:
+                return df
+        except Exception as drive_error:
+            st.warning(f"Google Driveからの読み込みに失敗: {str(drive_error)}")
+        
+        # Google Driveが使えない場合、メモリ内データを使用
+        if hasattr(collector, 'memory_data') and collector.memory_data:
+            st.info("💾 メモリ内のデータを使用して分析を実行します")
+            return collector.memory_data
+        
+        # 最後の手段：リアルタイムデータ収集
+        st.warning("⚡ リアルタイムでデータを収集中...")
+        df = collector.collect_patents_to_memory()
         return df
         
     except Exception as e:
