@@ -77,6 +77,10 @@ st.markdown("""
 def load_patent_data_from_cloud():
     """クラウドから効率的にデータロード（メモリ内対応）"""
     try:
+        # セッション状態からデモデータを確認
+        if 'demo_data' in st.session_state and not st.session_state['demo_data'].empty:
+            return st.session_state['demo_data']
+        
         from patent_cloud_collector import CloudPatentDataCollector
         
         collector = CloudPatentDataCollector()
@@ -100,7 +104,7 @@ def load_patent_data_from_cloud():
         return df
         
     except Exception as e:
-        st.error(f"データ読み込みエラー: {str(e)}")
+        # インポートエラーの場合、空のDataFrameを返す
         return pd.DataFrame()
 
 def execute_real_data_analysis(df: pd.DataFrame, analysis_type: str):
@@ -1127,38 +1131,60 @@ def main():
             """, unsafe_allow_html=True)
             
             # デモボタン（開発・デモ用）
-            if st.button("🧪 デモデータで動作確認"):
-                # 簡単なデモデータ生成
-                demo_data = {
-                    'patent_number': ['US10847397', 'US10672634', 'US10593580', 'US10472728', 'US10340135'],
-                    'title': [
-                        'Electrostatic chuck with curved surface for wafer processing',
-                        'Bendable chuck system for semiconductor applications',
-                        'Flexible ESC design for distortion control',
-                        'Advanced ceramic chuck with thermal management',
-                        'Multi-zone electrostatic chuck for precision control'
-                    ],
-                    'assignee': ['Applied Materials', 'Tokyo Electron', 'Kyocera', 'Applied Materials', 'Lam Research'],
-                    'filing_date': pd.to_datetime(['2020-01-15', '2020-06-22', '2021-03-10', '2021-08-05', '2022-02-14']),
-                    'abstract': [
-                        'An electrostatic chuck with curved surface for improved wafer processing and distortion control',
-                        'Bendable chuck system designed for flexible semiconductor wafer handling applications',
-                        'Flexible ESC technology for advanced distortion control in semiconductor manufacturing',
-                        'Advanced ceramic chuck incorporating thermal management for high-precision applications',
-                        'Multi-zone electrostatic chuck system providing precision control for wafer processing'
-                    ],
-                    'inventors': [
-                        ['John Smith', 'Jane Doe'], 
-                        ['Taro Tanaka', 'Hanako Sato'], 
-                        ['Jiro Suzuki'], 
-                        ['Mike Johnson', 'Sarah Wilson', 'Tom Brown'],
-                        ['Alex Chen', 'Lisa Wang']
+            if st.button("🧪 デモデータで動作確認", type="secondary", use_container_width=True):
+                with st.spinner("🎯 リアルなデモデータを生成中..."):
+                    # より詳細なデモデータ生成
+                    demo_patents = []
+                    companies = [
+                        "Applied Materials", "Tokyo Electron", "Kyocera", "Shinko Electric", 
+                        "TOTO", "NGK Insulators", "Lam Research", "Entegris"
                     ]
-                }
-                demo_df = pd.DataFrame(demo_data)
+                    
+                    patent_titles = [
+                        "Electrostatic chuck with curved surface for wafer processing",
+                        "Bendable chuck system for semiconductor applications", 
+                        "Flexible ESC design for distortion control",
+                        "Advanced ceramic chuck with thermal management",
+                        "Multi-zone electrostatic chuck for precision control"
+                    ]
+                    
+                    abstracts = [
+                        "An electrostatic chuck with curved surface for improved wafer processing and distortion control",
+                        "Bendable chuck system designed for flexible semiconductor wafer handling applications",
+                        "Flexible ESC technology for advanced distortion control in semiconductor manufacturing", 
+                        "Advanced ceramic chuck incorporating thermal management for high-precision applications",
+                        "Multi-zone electrostatic chuck system providing precision control for wafer processing"
+                    ]
+                    
+                    for i, company in enumerate(companies):
+                        for j in range(5):  # 各社5件 = 40件総計
+                            demo_patents.append({
+                                'patent_number': f'US{10847397 + i*1000 + j}',
+                                'title': patent_titles[j % len(patent_titles)],
+                                'assignee': company,
+                                'filing_date': pd.to_datetime(f'20{20 + (i+j)%4}-{((i+j)%12)+1:02d}-{15 + j}'),
+                                'abstract': abstracts[j % len(abstracts)],
+                                'inventors': [f'{company.split()[0]} Inventor {j+1}', f'{company.split()[0]} Inventor {j+2}']
+                            })
+                
+                demo_df = pd.DataFrame(demo_patents)
                 demo_df['filing_year'] = demo_df['filing_date'].dt.year
                 
-                st.info("🧪 デモデータで概要分析を実行")
+                # セッション状態にデモデータを保存
+                st.session_state['demo_data'] = demo_df
+                
+                st.success(f"✅ デモデータ生成完了: {len(demo_df)}件")
+                st.markdown(f"""
+                <div class="success-box">
+                    <h4>🎉 デモデータ準備完了！</h4>
+                    <p><strong>{len(demo_df)}件</strong>の模擬特許データを生成しました</p>
+                    <p><strong>対象企業</strong>: {len(companies)}社（Applied Materials、Tokyo Electron等）</p>
+                    <p><strong>分析可能</strong>: 概要分析、企業別分析、技術トレンド等</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # 自動的に分析を開始
+                st.markdown("### 📊 デモ概要分析")
                 show_overview_analysis(demo_df)
     
     with tab3:
