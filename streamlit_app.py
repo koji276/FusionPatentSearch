@@ -888,78 +888,53 @@ def main():
                 help="収集する特許データの件数を選択してください"
             )
             
-            # 収集予定の企業表示
-            st.markdown(f"#### 🏢 収集対象企業")
+            # 収集予定の企業表示（完全に新しい表示）
+            st.markdown("### 🏢 収集対象企業（17社）")
             
-            companies_preview = [
-                "Applied Materials", "Tokyo Electron", "Kyocera", 
-                "Shinko Electric", "TOTO", "Sumitomo Osaka Cement",
-                "NGK Insulators", "NTK Ceratec", "Lam Research",
-                "Entegris", "MiCo", "SEMCO Engineering", 
-                "Creative Technology", "Tsukuba Seiko", "FM Industries",
-                "Calitech", "Beijing U-Precision"
-            ]
+            # === 17社を明示的に表示（古いループを完全削除）===
             
-            mode_companies = {
-                "標準収集 (50件)": 6,
-                "拡張収集 (100件)": 10,
-                "大量収集 (200件)": 17,  # 全17社
-                "全件 (60+実在特許)": 17   # 全17社
-            }
+            # 日本企業（9社）
+            st.markdown("#### 🇯🇵 日本企業（9社）")
+            jp_col1, jp_col2, jp_col3 = st.columns(3)
+            with jp_col1:
+                st.write("✅ Tokyo Electron")
+                st.write("✅ Kyocera") 
+                st.write("✅ Shinko Electric")
+            with jp_col2:
+                st.write("✅ TOTO")
+                st.write("✅ NGK Insulators")
+                st.write("✅ NTK Ceratec")
+            with jp_col3:
+                st.write("✅ Creative Technology")
+                st.write("✅ Tsukuba Seiko")
+                st.write("✅ Sumitomo Osaka Cement")
             
-            num_companies = mode_companies[collection_mode]
-            selected_companies = companies_preview[:num_companies]
+            # 米国企業（4社）
+            st.markdown("#### 🇺🇸 米国企業（4社）")
+            us_col1, us_col2, us_col3, us_col4 = st.columns(4)
+            with us_col1:
+                st.write("✅ Applied Materials")
+            with us_col2:
+                st.write("✅ Lam Research")
+            with us_col3:
+                st.write("✅ Entegris")
+            with us_col4:
+                st.write("✅ FM Industries")
             
-            # 企業表示部分を完全に置き換え
-            st.markdown("#### 🏢 収集対象企業（17社）")
+            # アジア・欧州企業（4社）
+            st.markdown("#### 🌏 アジア・欧州企業（4社）")
+            asia_col1, asia_col2, asia_col3, asia_col4 = st.columns(4)
+            with asia_col1:
+                st.write("✅ MiCo (韓国)")
+            with asia_col2:
+                st.write("✅ SEMCO Engineering (フランス)")
+            with asia_col3:
+                st.write("✅ Calitech (台湾)")
+            with asia_col4:
+                st.write("✅ Beijing U-Precision (中国)")
             
-            # 静的企業リスト - チェックボックス形式で表示
-            st.markdown("**✅ 日本企業（9社）:**")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown("• Tokyo Electron 🇯🇵")
-                st.markdown("• Kyocera 🇯🇵")
-                st.markdown("• Shinko Electric 🇯🇵")
-            with col2:
-                st.markdown("• TOTO 🇯🇵")
-                st.markdown("• NGK Insulators 🇯🇵")
-                st.markdown("• NTK Ceratec 🇯🇵")
-            with col3:
-                st.markdown("• Creative Technology 🇯🇵")
-                st.markdown("• Tsukuba Seiko 🇯🇵")
-                st.markdown("• Sumitomo Osaka Cement 🇯🇵")
-            
-            st.markdown("**✅ 米国企業（4社）:**")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown("• Applied Materials 🇺🇸")
-            with col2:
-                st.markdown("• Lam Research 🇺🇸")
-            with col3:
-                st.markdown("• Entegris 🇺🇸")
-            with col4:
-                st.markdown("• FM Industries 🇺🇸→🇯🇵")
-            
-            st.markdown("**✅ アジア・欧州企業（4社）:**")
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.markdown("• MiCo 🇰🇷")
-            with col2:
-                st.markdown("• SEMCO Engineering 🇫🇷")
-            with col3:
-                st.markdown("• Calitech 🇹🇼")
-            with col4:
-                st.markdown("• Beijing U-Precision 🇨🇳")
-            
-            # 企業数の確認表示
-            st.markdown("""
-            <div style="background: #d4edda; padding: 1rem; border-radius: 8px; margin: 1rem 0;">
-                <h5>📊 収集統計</h5>
-                <p><strong>総企業数</strong>: 17社</p>
-                <p><strong>総特許数</strong>: 425+件（各社25件）</p>
-                <p><strong>地域分布</strong>: 日本(9) | 米国(4) | 韓国(1) | フランス(1) | 台湾(1) | 中国(1)</p>
-            </div>
-            """, unsafe_allow_html=True)
+            # 統計情報
+            st.success("📊 総計: 17社 | 425+特許 | 6地域対応")
         
         with col2:
             st.subheader("📈 収集進捗予測")
