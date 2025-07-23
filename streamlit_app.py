@@ -85,7 +85,11 @@ def load_patent_data_from_cloud():
         
         collector = CloudPatentDataCollector()
         
-        # まずGoogle Driveから読み込みを試行
+        # まずメモリデータを確認
+        if hasattr(collector, 'memory_data') and collector.memory_data is not None and not collector.memory_data.empty:
+            return collector.memory_data
+        
+        # Google Driveから読み込みを試行
         try:
             df = collector.load_all_patent_data()
             if not df.empty:
@@ -93,14 +97,9 @@ def load_patent_data_from_cloud():
         except Exception as drive_error:
             st.warning(f"Google Driveからの読み込みに失敗: {str(drive_error)}")
         
-        # Google Driveが使えない場合、メモリ内データを使用
-        if hasattr(collector, 'memory_data') and collector.memory_data:
-            st.info("💾 メモリ内のデータを使用して分析を実行します")
-            return collector.memory_data
-        
-        # 最後の手段：リアルタイムデータ収集
-        st.warning("⚡ リアルタイムでデータを収集中...")
-        df = collector.collect_patents_to_memory()
+        # 最後の手段：リアルタイムデータ収集（全件）
+        st.info("⚡ リアルタイムで全データを収集中...")
+        df = collector.collect_patents_to_memory()  # 全件収集
         return df
         
     except Exception as e:
