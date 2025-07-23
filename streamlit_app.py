@@ -233,10 +233,31 @@ def show_company_analysis(df: pd.DataFrame):
     
     # 企業選択
     companies = df['assignee'].value_counts().index.tolist()
-    selected_company = st.selectbox("🔍 分析対象企業を選択", companies)
+    
+    # デフォルトで最初の企業を選択
+    if 'selected_company_index' not in st.session_state:
+        st.session_state['selected_company_index'] = 0
+    
+    selected_company = st.selectbox(
+        "🔍 分析対象企業を選択", 
+        companies,
+        index=st.session_state.get('selected_company_index', 0),
+        key="company_selector"
+    )
+    
+    # 選択された企業のインデックスを保存
+    if selected_company in companies:
+        st.session_state['selected_company_index'] = companies.index(selected_company)
     
     if selected_company:
         company_df = df[df['assignee'] == selected_company]
+        
+        # 企業データが存在するか確認
+        if company_df.empty:
+            st.error(f"❌ {selected_company} のデータが見つかりません")
+            return
+        
+        st.markdown(f"### 📊 {selected_company} の詳細分析")
         
         # 企業基本情報
         col1, col2, col3 = st.columns(3)
@@ -249,58 +270,71 @@ def show_company_analysis(df: pd.DataFrame):
             st.metric("👥 平均発明者数", f"{avg_inventors:.1f}")
             
         with col3:
-            if 'filing_date' in company_df.columns:
-                date_range = (company_df['filing_date'].max() - company_df['filing_date'].min()).days
-                st.metric("📅 活動期間（日）", f"{date_range}")
+            if 'filing_date' in company_df.columns and not company_df['filing_date'].isna().all():
+                try:
+                    date_range = (company_df['filing_date'].max() - company_df['filing_date'].min()).days
+                    st.metric("📅 活動期間（日）", f"{date_range}")
+                except:
+                    st.metric("📅 活動期間", "計算不可")
+            else:
+                st.metric("📅 活動期間", "データなし")
         
         # 企業の時系列分析
-        if 'filing_year' in company_df.columns:
+        if 'filing_year' in company_df.columns and not company_df['filing_year'].isna().all():
             st.subheader(f"📈 {selected_company} の年次出願動向")
             company_yearly = company_df.groupby('filing_year').size()
             
-            fig = px.bar(
-                x=company_yearly.index,
-                y=company_yearly.values,
-                title=f"{selected_company} の年次特許出願数",
-                labels={'x': '出願年', 'y': '特許数'},
-                color=company_yearly.values,
-                color_continuous_scale='Viridis'
-            )
-            fig.update_layout(height=400, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            if not company_yearly.empty:
+                fig = px.bar(
+                    x=company_yearly.index,
+                    y=company_yearly.values,
+                    title=f"{selected_company} の年次特許出願数",
+                    labels={'x': '出願年', 'y': '特許数'},
+                    color=company_yearly.values,
+                    color_continuous_scale='Viridis'
+                )
+                fig.update_layout(height=400, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.warning("年次データが不足しています")
         
         # 技術キーワード分析
-        if not company_df['abstract'].empty:
+        if 'abstract' in company_df.columns and not company_df['abstract'].isna().all():
             st.subheader(f"☁️ {selected_company} の技術キーワード")
             
-            all_abstracts = ' '.join(company_df['abstract'].astype(str))
+            all_abstracts = ' '.join(company_df['abstract'].astype(str).fillna(''))
             
-            # ESC関連キーワードを抽出
-            esc_keywords = {
-                'Electrostatic Chuck': ['electrostatic', 'chuck', 'ESC'],
-                'Wafer Processing': ['wafer', 'substrate', 'silicon'],
-                'Curved Technology': ['curved', 'flexible', 'bendable'],
-                'Control Systems': ['control', 'voltage', 'electrode'],
-                'Materials': ['ceramic', 'polymer', 'dielectric']
-            }
-            
-            keyword_results = {}
-            for category, keywords in esc_keywords.items():
-                count = 0
-                for keyword in keywords:
-                    count += len(re.findall(r'\b' + keyword + r'\b', all_abstracts, re.IGNORECASE))
-                if count > 0:
-                    keyword_results[category] = count
-            
-            if keyword_results:
-                fig = px.pie(
-                    values=list(keyword_results.values()),
-                    names=list(keyword_results.keys()),
-                    title=f"{selected_company} の技術分野分布"
-                )
-                fig.update_traces(textposition='inside', textinfo='percent+label')
-                fig.update_layout(height=500)
-                st.plotly_chart(fig, use_container_width=True)
+            if all_abstracts.strip():
+                # ESC関連キーワードを抽出
+                esc_keywords = {
+                    'Electrostatic Chuck': ['electrostatic', 'chuck', 'ESC'],
+                    'Wafer Processing': ['wafer', 'substrate', 'silicon'],
+                    'Curved Technology': ['curved', 'flexible', 'bendable'],
+                    'Control Systems': ['control', 'voltage', 'electrode'],
+                    'Materials': ['ceramic', 'polymer', 'dielectric']
+                }
+                
+                keyword_results = {}
+                for category, keywords in esc_keywords.items():
+                    count = 0
+                    for keyword in keywords:
+                        count += len(re.findall(r'\b' + keyword + r'\b', all_abstracts, re.IGNORECASE))
+                    if count > 0:
+                        keyword_results[category] = count
+                
+                if keyword_results:
+                    fig = px.pie(
+                        values=list(keyword_results.values()),
+                        names=list(keyword_results.keys()),
+                        title=f"{selected_company} の技術分野分布"
+                    )
+                    fig.update_traces(textposition='inside', textinfo='percent+label')
+                    fig.update_layout(height=500)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("技術キーワードが検出されませんでした")
+            else:
+                st.warning("アブストラクトデータが不足しています")
                 
         # 発明者ネットワーク分析
         if 'inventors' in company_df.columns:
@@ -311,19 +345,51 @@ def show_company_analysis(df: pd.DataFrame):
                 if isinstance(inventors_list, list):
                     all_inventors.extend(inventors_list)
             
-            inventor_counts = Counter(all_inventors)
-            top_inventors = dict(inventor_counts.most_common(10))
+            if all_inventors:
+                inventor_counts = Counter(all_inventors)
+                top_inventors = dict(inventor_counts.most_common(10))
+                
+                if top_inventors:
+                    fig = px.bar(
+                        x=list(top_inventors.values()),
+                        y=list(top_inventors.keys()),
+                        orientation='h',
+                        title=f"主要発明者（特許数）",
+                        labels={'x': '特許数', 'y': '発明者名'}
+                    )
+                    fig.update_layout(height=400)
+                    st.plotly_chart(fig, use_container_width=True)
+                else:
+                    st.info("発明者データが不足しています")
+            else:
+                st.warning("発明者データが見つかりません")
+        
+        # 特許リスト表示
+        st.subheader(f"📋 {selected_company} の特許一覧")
+        
+        # 表示用データフレーム
+        display_columns = ['patent_number', 'title', 'filing_date']
+        if 'filing_year' in company_df.columns:
+            display_columns.append('filing_year')
+        
+        available_columns = [col for col in display_columns if col in company_df.columns]
+        if available_columns:
+            display_df = company_df[available_columns].copy()
             
-            if top_inventors:
-                fig = px.bar(
-                    x=list(top_inventors.values()),
-                    y=list(top_inventors.keys()),
-                    orientation='h',
-                    title=f"主要発明者（特許数）",
-                    labels={'x': '特許数', 'y': '発明者名'}
-                )
-                fig.update_layout(height=400)
-                st.plotly_chart(fig, use_container_width=True)
+            # 日本語カラム名
+            column_mapping = {
+                'patent_number': '特許番号',
+                'title': 'タイトル',
+                'filing_date': '出願日',
+                'filing_year': '出願年'
+            }
+            
+            display_df = display_df.rename(columns=column_mapping)
+            st.dataframe(display_df, use_container_width=True, height=300)
+        else:
+            st.warning("表示可能な特許情報がありません")
+    else:
+        st.warning("企業を選択してください")
 
 def show_technology_trends(df: pd.DataFrame):
     """技術トレンド分析（完成版）"""
