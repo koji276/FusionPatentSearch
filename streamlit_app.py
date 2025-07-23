@@ -1070,18 +1070,44 @@ def main():
     with tab2:
         st.header("🔍 実データ分析システム")
         
-        # データリフレッシュボタンを追加
-        col_refresh1, col_refresh2 = st.columns([3, 1])
-        with col_refresh2:
-            if st.button("🔄 最新データ読み込み", help="収集したての最新データを強制読み込み"):
-                # キャッシュクリア
+        # 緊急デバッグ情報
+        st.markdown("### 🐛 デバッグ情報")
+        debug_col1, debug_col2 = st.columns(2)
+        
+        with debug_col1:
+            st.write(f"**現在時刻**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            st.write(f"**アプリバージョン**: Emergency Fix v1.0")
+            
+        with debug_col2:
+            if st.button("🔄 強制最新データ読み込み", help="必ず425件の最新データを読み込み"):
                 if 'demo_data' in st.session_state:
                     del st.session_state['demo_data']
                 st.rerun()
         
         # 実データロード
-        with st.spinner("最新の保存データを読み込み中..."):
+        with st.spinner("強制的に最新データを読み込み中..."):
             df = load_patent_data_from_cloud()
+        
+        # データ状況の詳細表示
+        st.markdown("### 📊 データ状況詳細")
+        if len(df) > 0:
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("総件数", len(df))
+            with col2:
+                st.metric("企業数", df['assignee'].nunique())
+            with col3:
+                expected = 17 * 25  # 期待値
+                st.metric("期待値", expected, delta=len(df) - expected)
+            
+            # 企業別件数確認
+            if len(df) >= 400:
+                st.success("✅ 425件近いデータが正常に読み込まれました")
+                company_counts = df['assignee'].value_counts()
+                st.write("**企業別特許数**:")
+                st.dataframe(company_counts.head(10), use_container_width=True)
+            else:
+                st.warning(f"⚠️ データが不足しています（{len(df)}件 / 425件期待）")
         
         if len(df) > 0:
             # データサマリー表示
