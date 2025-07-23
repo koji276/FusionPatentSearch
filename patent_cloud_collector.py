@@ -216,18 +216,11 @@ class CloudPatentDataCollector:
         # データフレーム作成
         df = pd.DataFrame(collected_data)
         
-        # メモリに保存（グローバルに保存）
+        # メモリに保存
         self.memory_data = df
         self.collected_count = len(df)
         
-        # セッション状態にも保存（確実な引き継ぎのため）
-        if 'streamlit' in globals():
-            try:
-                import streamlit as st
-                st.session_state['latest_collected_data'] = df
-                st.session_state['collection_timestamp'] = datetime.now()
-            except:
-                pass
+        # セッション状態への保存は外部で行う（Streamlitのコンテキスト内で）
         
         # Google Driveに保存試行（分割保存対応）
         try:
