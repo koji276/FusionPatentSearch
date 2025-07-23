@@ -77,33 +77,36 @@ st.markdown("""
 def load_patent_data_from_cloud():
     """クラウドから効率的にデータロード（メモリ内対応）"""
     try:
-        # セッション状態からデモデータを確認
-        if 'demo_data' in st.session_state and not st.session_state['demo_data'].empty:
-            return st.session_state['demo_data']
-        
         from patent_cloud_collector import CloudPatentDataCollector
         
         collector = CloudPatentDataCollector()
         
-        # まずメモリデータを確認
+        # 1. まず最新のメモリデータを確認（収集直後の最新データ）
         if hasattr(collector, 'memory_data') and collector.memory_data is not None and not collector.memory_data.empty:
-            return collector.memory_data
+            # 最新収集データがあればそれを優先
+            if len(collector.memory_data) >= 400:  # 425件に近い場合は最新データ
+                return collector.memory_data
         
-        # Google Driveから読み込みを試行
+        # 2. Google Driveから最新ファイルを読み込み
         try:
             df = collector.load_all_patent_data()
-            if not df.empty:
+            if not df.empty and len(df) >= 400:  # 十分なデータがある場合
                 return df
         except Exception as drive_error:
             st.warning(f"Google Driveからの読み込みに失敗: {str(drive_error)}")
         
-        # 最後の手段：リアルタイムデータ収集（全件）
-        st.info("⚡ リアルタイムで全データを収集中...")
+        # 3. セッション状態からデモデータを確認（フォールバック）
+        if 'demo_data' in st.session_state and not st.session_state['demo_data'].empty:
+            return st.session_state['demo_data']
+        
+        # 4. 最後の手段：リアルタイムデータ収集（全件）
+        st.info("⚡ 最新データをリアルタイムで読み込み中...")
         df = collector.collect_patents_to_memory()  # 全件収集
         return df
         
     except Exception as e:
         # インポートエラーの場合、空のDataFrameを返す
+        st.error(f"データ読み込みエラー: {str(e)}")
         return pd.DataFrame()
 
 def execute_real_data_analysis(df: pd.DataFrame, analysis_type: str):
@@ -1067,8 +1070,17 @@ def main():
     with tab2:
         st.header("🔍 実データ分析システム")
         
+        # データリフレッシュボタンを追加
+        col_refresh1, col_refresh2 = st.columns([3, 1])
+        with col_refresh2:
+            if st.button("🔄 最新データ読み込み", help="収集したての最新データを強制読み込み"):
+                # キャッシュクリア
+                if 'demo_data' in st.session_state:
+                    del st.session_state['demo_data']
+                st.rerun()
+        
         # 実データロード
-        with st.spinner("保存されたデータを読み込み中..."):
+        with st.spinner("最新の保存データを読み込み中..."):
             df = load_patent_data_from_cloud()
         
         if len(df) > 0:
@@ -1080,6 +1092,7 @@ def main():
                 <p>企業数: <strong>{df['assignee'].nunique()}社</strong> | 
                    技術分野: <strong>ESC関連技術</strong> | 
                    データ品質: <strong>高品質</strong></p>
+                <p>データ更新: <strong>{datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}</strong></p>
             </div>
             """, unsafe_allow_html=True)
             
