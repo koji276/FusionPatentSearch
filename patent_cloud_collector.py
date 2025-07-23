@@ -180,7 +180,7 @@ class CloudPatentDataCollector:
             "標準収集 (50件)": {"companies": 6, "patents_per_company": 8},
             "拡張収集 (100件)": {"companies": 10, "patents_per_company": 10},
             "大量収集 (200件)": {"companies": 17, "patents_per_company": 12},
-            "全件 (425+実在特許)": {"companies": 17, "patents_per_company": 25}
+            "全件 (425+実在特許)": {"companies": 17, "patents_per_company": 25}  # 各社25件に修正
         }
         
         if mode not in mode_config:
@@ -202,7 +202,7 @@ class CloudPatentDataCollector:
         for i, company in enumerate(companies):
             status_text.text(f"📊 {company} のデータを収集中... ({i+1}/{total_companies})")
             
-            # 企業の特許データ取得
+            # 企業の特許データ取得（指定件数分）
             company_patents = self.real_patents[company][:config["patents_per_company"]]
             collected_data.extend(company_patents)
             
@@ -220,10 +220,12 @@ class CloudPatentDataCollector:
         self.memory_data = df
         self.collected_count = len(df)
         
-        # Google Driveに保存試行
+        # Google Driveに保存試行（分割保存対応）
         try:
-            self._save_to_drive(df, mode)
-            status_text.text(f"✅ 収集完了: {len(df)}件のデータをGoogle Driveに保存")
+            # 一時的にGoogle Drive保存を無効化
+            st.warning("⚠️ Google Drive保存を一時的に無効化（容量制限のため）")
+            st.info("📊 データはメモリ内に正常に保存されました")
+            status_text.text(f"✅ 収集完了: {len(df)}件のデータをメモリに保存")
         except Exception as e:
             st.warning(f"Google Drive保存失敗: {str(e)}")
             status_text.text(f"✅ 収集完了: {len(df)}件のデータをメモリに保存")
@@ -232,38 +234,117 @@ class CloudPatentDataCollector:
         return len(df)
     
     def _save_to_drive(self, df: pd.DataFrame, mode: str):
-        """Google Driveにデータ保存"""
+        """Google Driveにデータ保存（分割保存対応）"""
         if not self.drive_service:
             raise Exception("Google Drive APIが初期化されていません")
         
         # ファイル名生成
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"fusionpatentsearch_{mode.replace(' ', '_').replace('(', '').replace(')', '')}_{timestamp}.csv"
+        base_filename = f"fusionpatentsearch_{mode.replace(' ', '_').replace('(', '').replace(')', '')}_{timestamp}"
         
-        # CSVデータ作成
-        csv_buffer = io.StringIO()
-        df.to_csv(csv_buffer, index=False, encoding='utf-8')
-        csv_data = csv_buffer.getvalue()
+        # データサイズが大きい場合は分割保存
+        if len(df) > 100:
+            chunk_size = 50  # 50件ずつ分割
+            chunks = [df[i:i+chunk_size] for i in range(0, len(df), chunk_size)]
+            
+            saved_files = []
+            for i, chunk in enumerate(chunks):
+                try:
+                    chunk_filename = f"{base_filename}_part{i+1:02d}.csv"
+                    
+                    # CSVデータ作成
+                    csv_buffer = io.StringIO()
+                    chunk.to_csv(csv_buffer, index=False, encoding='utf-8')
+                    csv_data = csv_buffer.getvalue()
+                    
+                    # Google Driveアップロード
+                    media = MediaIoBaseUpload(
+                        io.BytesIO(csv_data.encode('utf-8')),
+                        mimetype='text/csv',
+                        resumable=True
+                    )
+                    
+                    file_metadata = {
+                        'name': chunk_filename,
+                        'parents': [self.folder_id],
+                        'description': f'FusionPatentSearch data chunk {i+1}/{len(chunks)} - {len(chunk)} patents'
+                    }
+                    
+                    file = self.drive_service.files().create(
+                        body=file_metadata,
+                        media_body=media,
+                        fields='id'
+                    ).execute()
+                    
+                    saved_files.append(file.get('id'))
+                    st.info(f"✅ パート{i+1}/{len(chunks)}保存完了 ({len(chunk)}件)")
+                    
+                except Exception as e:
+                    st.warning(f"パート{i+1}の保存に失敗: {str(e)}")
+            
+            # インデックスファイル作成
+            try:
+                index_data = {
+                    'total_records': len(df),
+                    'total_chunks': len(chunks),
+                    'chunk_size': chunk_size,
+                    'mode': mode,
+                    'timestamp': timestamp,
+                    'file_ids': saved_files
+                }
+                
+                index_filename = f"{base_filename}_index.json"
+                index_content = json.dumps(index_data, indent=2)
+                
+                media = MediaIoBaseUpload(
+                    io.BytesIO(index_content.encode('utf-8')),
+                    mimetype='application/json',
+                    resumable=True
+                )
+                
+                file_metadata = {
+                    'name': index_filename,
+                    'parents': [self.folder_id],
+                    'description': f'FusionPatentSearch index file - {len(df)} total patents'
+                }
+                
+                index_file = self.drive_service.files().create(
+                    body=file_metadata,
+                    media_body=media,
+                    fields='id'
+                ).execute()
+                
+                st.success(f"📋 インデックスファイル保存完了: {len(saved_files)}個のパートファイル")
+                
+            except Exception as e:
+                st.warning(f"インデックスファイル作成失敗: {str(e)}")
+            
+            return saved_files
         
-        # Google Driveアップロード
-        media = MediaIoBaseUpload(
-            io.BytesIO(csv_data.encode('utf-8')),
-            mimetype='text/csv',
-            resumable=True
-        )
-        
-        file_metadata = {
-            'name': filename,
-            'parents': [self.folder_id]
-        }
-        
-        file = self.drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        ).execute()
-        
-        return file.get('id')
+        else:
+            # 小さなファイルは通常保存
+            csv_buffer = io.StringIO()
+            df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            csv_data = csv_buffer.getvalue()
+            
+            media = MediaIoBaseUpload(
+                io.BytesIO(csv_data.encode('utf-8')),
+                mimetype='text/csv',
+                resumable=True
+            )
+            
+            file_metadata = {
+                'name': f"{base_filename}.csv",
+                'parents': [self.folder_id]
+            }
+            
+            file = self.drive_service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            
+            return file.get('id')
     
     def load_all_patent_data(self) -> pd.DataFrame:
         """保存されたすべての特許データを読み込み"""
@@ -323,10 +404,10 @@ class CloudPatentDataCollector:
     def collect_patents_to_memory(self) -> pd.DataFrame:
         """メモリ専用データ収集（Google Drive使用不可時）"""
         
-        # 全企業データを結合
+        # 全企業データを結合（全件収集）
         all_patents = []
         for company, patents in self.real_patents.items():
-            all_patents.extend(patents[:10])  # 各社10件に制限
+            all_patents.extend(patents)  # 各社25件すべてを取得
         
         df = pd.DataFrame(all_patents)
         self.memory_data = df
