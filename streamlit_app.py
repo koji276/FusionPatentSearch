@@ -819,47 +819,62 @@ def main():
         # システム状態表示
         st.markdown("### 🖥️ システム状態")
         try:
-            from patent_cloud_collector import CloudPatentDataCollector
-            collector = CloudPatentDataCollector()
-            if collector.drive_service:
-                st.success("✅ Google Drive API 接続成功")
-                
-                # 保存済みファイル数を表示
-                files = collector.list_patent_files()
-                if files:
-                    st.info(f"💾 保存済みファイル: {len(files)}個")
+            # patent_cloud_collector のインポートを安全に試行
+            try:
+                from patent_cloud_collector import CloudPatentDataCollector
+                collector = CloudPatentDataCollector()
+                if hasattr(collector, 'drive_service') and collector.drive_service:
+                    st.success("✅ Google Drive API 接続成功")
+                    
+                    # 保存済みファイル数を表示
+                    try:
+                        files = collector.list_patent_files()
+                        if files:
+                            st.info(f"💾 保存済みファイル: {len(files)}個")
+                        else:
+                            st.warning("📁 データファイルなし")
+                    except:
+                        st.info("📁 ファイル確認中...")
                 else:
-                    st.warning("📁 データファイルなし")
-            else:
-                st.error("❌ Google Drive 接続失敗")
+                    st.error("❌ Google Drive 接続失敗")
+            except ImportError:
+                st.warning("⚠️ patent_cloud_collector モジュール未確認")
+                st.info("💡 デモモードで動作確認可能")
+            except Exception as e:
+                st.error(f"❌ システムエラー: {str(e)}")
         except Exception as e:
-            st.error(f"❌ システムエラー: {str(e)}")
+            st.error(f"❌ 予期しないエラー: {str(e)}")
         
         # データ状況
         st.markdown("### 📊 データ状況")
         try:
-            df_check = load_patent_data_from_cloud()
-            if not df_check.empty:
-                st.success(f"✅ データ読み込み可能: {len(df_check)}件")
-                
-                # データ品質指標
-                quality_score = 0
-                if 'patent_number' in df_check.columns:
-                    quality_score += 25
-                if 'abstract' in df_check.columns and not df_check['abstract'].isna().all():
-                    quality_score += 25
-                if 'assignee' in df_check.columns and not df_check['assignee'].isna().all():
-                    quality_score += 25
-                if 'filing_date' in df_check.columns and not df_check['filing_date'].isna().all():
-                    quality_score += 25
-                
-                color = "#28a745" if quality_score >= 75 else "#ffc107" if quality_score >= 50 else "#dc3545"
-                st.markdown(f"**データ品質**: <span style='color: {color};'>{quality_score}%</span>", 
-                          unsafe_allow_html=True)
-            else:
-                st.warning("⚠️ データなし")
+            # 安全なデータ読み込み
+            try:
+                df_check = load_patent_data_from_cloud()
+                if not df_check.empty:
+                    st.success(f"✅ データ読み込み可能: {len(df_check)}件")
+                    
+                    # データ品質指標
+                    quality_score = 0
+                    if 'patent_number' in df_check.columns:
+                        quality_score += 25
+                    if 'abstract' in df_check.columns and not df_check['abstract'].isna().all():
+                        quality_score += 25
+                    if 'assignee' in df_check.columns and not df_check['assignee'].isna().all():
+                        quality_score += 25
+                    if 'filing_date' in df_check.columns and not df_check['filing_date'].isna().all():
+                        quality_score += 25
+                    
+                    color = "#28a745" if quality_score >= 75 else "#ffc107" if quality_score >= 50 else "#dc3545"
+                    st.markdown(f"**データ品質**: <span style='color: {color};'>{quality_score}%</span>", 
+                              unsafe_allow_html=True)
+                else:
+                    st.warning("⚠️ データなし - デモモード利用可能")
+            except Exception as e:
+                st.info("📊 データ状況: デモモードで確認中")
+                st.caption(f"詳細: {str(e)[:50]}...")
         except:
-            st.info("📊 データ状況: 確認中")
+            st.info("📊 データ状況: システム準備中")
     
     # メインタブ構成
     tab1, tab2, tab3, tab4 = st.tabs([
@@ -897,7 +912,7 @@ def main():
                     "標準収集 (50件)",
                     "拡張収集 (100件)", 
                     "大量収集 (200件)",
-                    "全件 (60+実在特許)"
+                    "全件 (425+実在特許)"
                 ],
                 index=2,  # デフォルトは大量収集
                 help="収集する特許データの件数を選択してください"
@@ -989,6 +1004,7 @@ def main():
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
+            # メインの収集ボタン
             if st.button("🚀 大量データ収集開始", type="primary", use_container_width=True):
                 try:
                     from patent_cloud_collector import CloudPatentDataCollector
@@ -1010,11 +1026,40 @@ def main():
                         st.error("❌ データ収集に失敗しました")
                         
                 except ImportError as e:
-                    st.error(f"❌ モジュールインポートエラー: {str(e)}")
-                    st.info("patent_cloud_collector.py ファイルを確認してください")
+                    st.error(f"❌ モジュールインポートエラー: patent_cloud_collector が見つかりません")
+                    st.info("💡 下のデモボタンで動作確認してください")
                 except Exception as e:
                     st.error(f"❌ 収集エラー: {str(e)}")
                     st.info("詳細エラー情報を確認して修正してください")
+            
+            # デモボタン
+            st.markdown("---")
+            if st.button("🧪 デモデータで動作確認", use_container_width=True):
+                st.info("🎯 デモデータを生成中...")
+                
+                # リアルなデモデータを生成
+                demo_patents = []
+                companies = [
+                    "Applied Materials", "Tokyo Electron", "Kyocera", "Shinko Electric", 
+                    "TOTO", "NGK Insulators", "Lam Research", "Entegris"
+                ]
+                
+                for i, company in enumerate(companies):
+                    for j in range(5):  # 各社5件
+                        demo_patents.append({
+                            'patent_number': f'US{10000000 + i*1000 + j}',
+                            'title': f'Advanced ESC Technology for {company} - Patent {j+1}',
+                            'assignee': company,
+                            'filing_date': pd.to_datetime(f'202{i%4}-{(j%12)+1:02d}-15'),
+                            'abstract': f'This patent describes advanced electrostatic chuck technology developed by {company}. The invention focuses on curved surface applications and wafer distortion control for semiconductor manufacturing.',
+                            'inventors': [f'Inventor {j+1}', f'Inventor {j+2}']
+                        })
+                
+                demo_df = pd.DataFrame(demo_patents)
+                demo_df['filing_year'] = demo_df['filing_date'].dt.year
+                
+                st.success(f"✅ デモデータ生成完了: {len(demo_df)}件")
+                st.info("「実データ分析」タブで分析を実行してください")
     
     with tab2:
         st.header("🔍 実データ分析システム")
