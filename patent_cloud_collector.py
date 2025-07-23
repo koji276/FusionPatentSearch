@@ -17,7 +17,7 @@ class CloudPatentDataCollector:
     
     def __init__(self):
         self.drive_service = None
-        self.folder_id = None
+        self.folder_id = "1EBUxnXALqYVkVk8m2xSTcuzotJezjaBe" 
         self.setup_google_drive()
         
         # 実在特許番号リスト（企業別・技術別に正確に調査済み）
